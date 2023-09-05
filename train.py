@@ -4,13 +4,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torchvision.transforms as transforms
-from torch.cuda.amp import GradScaler, autocast
 from tqdm import tqdm
 from psutil import cpu_count
 from torch.utils.data import DataLoader
 from tensorboardX import SummaryWriter
 from dataloader import PicklebotDataset, custom_collate
-from mobilenet import MobileNetLarge, MobileNetSmall, MobileNetSmallNoLSTM,MobileNetLargeNoLSTM, MobileNetSmall2D
+from mobilenet import MobileNetLarge2D, MobileNetSmall2D, MobileNetSmall3D, MobileNetLarge3D
 
 
 '''Balls are 0, strikes are 1'''
@@ -27,8 +26,8 @@ momentum=0.9
 eps=np.sqrt(0.002) #From the pytorch blog post, "a reasonable approximation can be taken with the formula PyTorch_eps = sqrt(TF_eps)."
 
 #annotations paths
-train_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/train_labels.csv'
-val_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/val_labels.csv'
+train_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/training_test/training_test_labels.csv' #NEED TO CHANGE THIS TO GO BACK TO REAL TRAIN AND TEST'''
+val_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/eval_test/eval_test_labels.csv' #NEED TO CHANGE THIS TO GO BACK TO REAL TRAIN AND TEST'''
 test_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/test_labels.csv'
 
 #video paths
@@ -48,14 +47,13 @@ test_dataset = PicklebotDataset(test_annotations_file,test_video_paths,transform
 test_loader = DataLoader(test_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count())
 
 #model, optimizer, loss function
-model = MobileNetSmall2D()
+model = MobileNetLarge2D()
 #optimizer = optim.RMSprop(params=model.parameters(),lr=learning_rate,weight_decay=weight_decay,momentum=momentum,eps=eps) #starting with AdamW for now. 
 optimizer = optim.AdamW(params=model.parameters(),lr=learning_rate)
 criterion = nn.CrossEntropyLoss(ignore_index=2)#ignore_index=0 was ignoring the label 0!
-scaler = GradScaler()
-model_name = 'mobilenetsmall2dlstm'
+model_name = 'mobilenetlarge2d_overfit'
 model = model.to(device)
-model.load_state_dict(torch.load(f'{model_name}.pth')) #if applicable, load the model from the last checkpoint
+# model.load_state_dict(torch.load(f'{model_name}.pth')) #if applicable, load the model from the last checkpoint
 writer = SummaryWriter(f'runs/{model_name}')
 
 
@@ -71,6 +69,7 @@ def estimate_loss():
     for val_features,val_labels in tqdm(val_loader):
         val_features = val_features.to(device)
         val_labels = val_labels.to(torch.int64) #waiting to move to device until after forward pass, idk if this matters
+        val_labels = val_labels.expand(val_features.shape[2]) #this is only for our lstm T -> batch size, a lame hack
         val_outputs = model(val_features)
         val_loss = criterion(val_outputs,val_labels.to(device))
         total_val_loss += val_loss.item()
@@ -101,14 +100,13 @@ try:
         for batch_idx, (features,labels) in tqdm(enumerate(train_loader)):
             
             labels = labels.to(torch.int64)
-            labels = labels.expand(features.shape[2]) #this is a hack to make the labels the same shape as the outputs, so we can calculate the loss, but is lame.
+            labels = labels.expand(features.shape[2]) #this is a hack to make the labels the same shape as the outputs when we're using LSTM, so we can calculate the loss, but is lame.
             
             features = features.to(device) 
             
             #zero the gradients
             optimizer.zero_grad(set_to_none=True)
             
-            #with autocast():
             outputs = model(features)
             loss = criterion(outputs,labels.to(device))
     
@@ -126,7 +124,7 @@ try:
             val_loss, val_accuracy = estimate_loss()
         
             val_losses.append(val_loss)
-            writer.add_scalar('validation loss', val_loss[-1], iter)
+            writer.add_scalar('validation loss', val_losses[-1], iter)
             train_percent.append(sum(train_correct)/len(train_correct)*batch_size)
             writer.add_scalar('training accuracy', train_percent[-1], iter)
             val_percent.append(val_accuracy)

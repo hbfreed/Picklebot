@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
-from mobilenet import Bottleneck #for the MobileNetV2 bottleneck blocks, which are used in the MobileViTV1 architecture. We use blocks from Mobilenet V3.
+from mobilenet import Bottleneck3D #for the MobileNetV2 bottleneck blocks, which are used in the MobileViTV1 architecture. We use blocks from Mobilenet V3.
 
 
 class SeparableSelfAttention(nn.Module):
@@ -11,7 +11,6 @@ class SeparableSelfAttention(nn.Module):
 
 
 class MobileViTV1Block(nn.Module):
-    #conv nxn -> pw_conv -> unfold -> 
     def __init__(self,in_channels,out_channels,stride,expanded_channels,nonlinearity):
         super.__init__()
 
@@ -22,8 +21,12 @@ class MobileViTV1Block(nn.Module):
 
         self.nonlinearity = nonlinearity
 
+    #conv nxn -> pw_conv -> unfold -> 
+    def forward(self,x):
+        pass
+
 class MobileViTV2Block(nn.Module):
-    #dw_conv-> pw_conv -> unfold -> separable_SA -> feedforward -> fold -> pw_conv
+    #separable self atention has linear time complexity (O(n)) instead of quadratic (O(n^2)) like MHA
     def __init__(self,in_channels,out_channels,stride,expanded_channels,b):
         super.__init__()
 
@@ -42,7 +45,7 @@ class MobileViTV2Block(nn.Module):
         self.fold = nn.Fold()
 
         self.pw_conv2 = nn.Conv3d()
-
+    #dw_conv-> pw_conv -> unfold -> separable_SA -> feedforward -> fold -> pw_conv
     def forward(self,x): #The separable self-attention and feed-forward layers are repeated b times before applying the folding operation.
 
         x = self.dw_conv(x)
@@ -64,23 +67,23 @@ class MobileVitV1(nn.Module): #implementing MobileVit-XXS (0.4 GFLOPs, 1.3M para
             nn.Conv3d(in_channels=3,out_channels=16,kernel_size=3,stride=2,padding=1),
             nn.SiLU(),
             nn.BatchNorm3d(num_features=16),
-            Bottleneck(in_channels=16,out_channels=16,stride=1,expanded_channels=16,nonlinearity=nn.SiLU()),
+            Bottleneck3D(in_channels=16,out_channels=16,stride=1,expanded_channels=16,nonlinearity=nn.SiLU()),
             )
         self.block2 = nn.Sequential(
-            Bottleneck(in_channels=16,out_channels=24,stride=2,expanded_channels=32,nonlinearity=nn.SiLU()),
-            Bottleneck(in_channels=24,out_channels=24,stride=1,expanded_channels=48,nonlinearity=nn.SiLU()),
-            Bottleneck(in_channels=24,out_channels=24,stride=1,expanded_channels=48,nonlinearity=nn.SiLU()),
+            Bottleneck3D(in_channels=16,out_channels=24,stride=2,expanded_channels=32,nonlinearity=nn.SiLU()),
+            Bottleneck3D(in_channels=24,out_channels=24,stride=1,expanded_channels=48,nonlinearity=nn.SiLU()),
+            Bottleneck3D(in_channels=24,out_channels=24,stride=1,expanded_channels=48,nonlinearity=nn.SiLU()),
             )
         self.block3 = nn.Sequential(
-            Bottleneck(in_channels=24,out_channels=48,stride=2,expanded_channels=48,nonlinearity=nn.SiLU()),
+            Bottleneck3D(in_channels=24,out_channels=48,stride=2,expanded_channels=48,nonlinearity=nn.SiLU()),
             MobileViTV1Block(),
             )
         self.block4 = nn.Sequential(
-            Bottleneck(in_channels=48,out_channels=64,stride=2,expanded_channels=96,nonlinearity=nn.SiLU()),
+            Bottleneck3D(in_channels=48,out_channels=64,stride=2,expanded_channels=96,nonlinearity=nn.SiLU()),
             MobileViTV1Block(),
             )
         self.block5 = nn.Sequential(
-            Bottleneck(in_channels=64,out_channels=80,stride=2,expanded_channels=48,nonlinearity=nn.SiLU()),
+            Bottleneck3D(in_channels=64,out_channels=80,stride=2,expanded_channels=48,nonlinearity=nn.SiLU()),
             MobileViTV1Block(),
             nn.Conv3d(in_channels=80,out_channels=320,kernel_size=1,stride=1,padding=0),
             nn.SiLU(),
@@ -106,23 +109,23 @@ class MobileVitV2(nn.Module): #replaces "Multi-Headed Attention in MobileViTV1 w
             nn.Conv3d(in_channels=3,out_channels=32*alpha,kernel_size=3,stride=2,padding=1),
             nn.SiLU(),
             nn.BatchNorm3d(num_features=32*alpha),
-            Bottleneck(in_channels=32*alpha,out_channels=64*alpha,stride=1,expanded_channels=32*alpha*2,nonlinearity=nn.SiLU()),
+            Bottleneck3D(in_channels=32*alpha,out_channels=64*alpha,stride=1,expanded_channels=32*alpha*2,nonlinearity=nn.SiLU()),
             )
         self.block2 = nn.Sequential(
-            Bottleneck(in_channels=64*alpha,out_channels=128*alpha,stride=2,expanded_channels=64*alpha*2,nonlinearity=nn.SiLU()),
-            Bottleneck(in_channels=128*alpha,out_channels=128*alpha,stride=1,expanded_channels=128*alpha*2,nonlinearity=nn.SiLU()),
-            Bottleneck(in_channels=128*alpha,out_channels=128*alpha,stride=1,expanded_channels=128*alpha*2,nonlinearity=nn.SiLU()),
+            Bottleneck3D(in_channels=64*alpha,out_channels=128*alpha,stride=2,expanded_channels=64*alpha*2,nonlinearity=nn.SiLU()),
+            Bottleneck3D(in_channels=128*alpha,out_channels=128*alpha,stride=1,expanded_channels=128*alpha*2,nonlinearity=nn.SiLU()),
+            Bottleneck3D(in_channels=128*alpha,out_channels=128*alpha,stride=1,expanded_channels=128*alpha*2,nonlinearity=nn.SiLU()),
             )
         self.block3 = nn.Sequential(
-            Bottleneck(in_channels=128*alpha,out_channels=256*alpha,stride=2,expanded_channels=128*alpha*2,nonlinearity=nn.SiLU()),
+            Bottleneck3D(in_channels=128*alpha,out_channels=256*alpha,stride=2,expanded_channels=128*alpha*2,nonlinearity=nn.SiLU()),
             MobileViTV1Block(),
             )
         self.block4 = nn.Sequential(
-            Bottleneck(in_channels=256*alpha,out_channels=384*alpha,stride=2,expanded_channels=256*alpha*2,nonlinearity=nn.SiLU()),
+            Bottleneck3D(in_channels=256*alpha,out_channels=384*alpha,stride=2,expanded_channels=256*alpha*2,nonlinearity=nn.SiLU()),
             MobileViTV1Block(),
             )
         self.block5 = nn.Sequential(
-            Bottleneck(in_channels=384*alpha,out_channels=512*alpha,stride=2,expanded_channels=48,nonlinearity=nn.SiLU()),
+            Bottleneck3D(in_channels=384*alpha,out_channels=512*alpha,stride=2,expanded_channels=48,nonlinearity=nn.SiLU()),
             MobileViTV1Block(),
             )
 
