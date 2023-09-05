@@ -76,7 +76,7 @@ class Bottleneck3D(nn.Module):
 
 #2D bottleneck for our 2d convnet with LSTM
 class Bottleneck2D(nn.Module):
-    def __init__(self, in_channels, out_channels, expanded_channels, stride=1, use_se=False, kernel_size=3,nonlinearity=nn.Hardswish(),batchnorm=True):
+    def __init__(self, in_channels, out_channels, expanded_channels, stride=1, use_se=False, kernel_size=3,nonlinearity=nn.Hardswish(),batchnorm=True,padding=kernel_size//2):
         super().__init__()
 
         #pointwise conv1x1x1 (reduce channels)
@@ -89,7 +89,7 @@ class Bottleneck2D(nn.Module):
             groups=expanded_channels,
             kernel_size=kernel_size,
             stride=stride,
-            padding=kernel_size//2,
+            padding=padding,
             )
         #squeeze-and-excite (recalibrate channel wise)
         self.squeeze_excite = SEBlock2D(expanded_channels) if use_se else None 

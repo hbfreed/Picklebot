@@ -15,9 +15,8 @@ class MobileViTV1Block(nn.Module):
         super.__init__()
 
         self.conv = nn.Conv3d(in_channels=in_channels,out_channels=expanded_channels,kernel_size=3,stride=stride,padding=1)
-        self.unfold = nn.Unfold()
-        self.transformer = nn.Transformer()
-
+        # self.unfold =  #the paper uses h=w=2, can't us nn.Unfold because it takes 4D->3D, we want 5D->5D (batch,channels,time,height,width)->(batch,T,d,P=hw=4,N=HW/P)
+        self.multihead_attention = nn.MultiheadAttention()
 
         self.nonlinearity = nonlinearity
 
@@ -36,21 +35,21 @@ class MobileViTV2Block(nn.Module):
 
         self.pw_conv1 = nn.Conv3d()
 
-        self.unfold = nn.Unfold()
+        # self.unfold = 
 
-        self.separable_SA = nn.Sequential()
+        self.separable_SA = SeparableSelfAttention()
 
         self.feedforward = nn.Sequential()
 
-        self.fold = nn.Fold()
-
+        # self.fold = 
         self.pw_conv2 = nn.Conv3d()
+  
     #dw_conv-> pw_conv -> unfold -> separable_SA -> feedforward -> fold -> pw_conv
     def forward(self,x): #The separable self-attention and feed-forward layers are repeated b times before applying the folding operation.
 
         x = self.dw_conv(x)
         x = self.pw_conv1(x)
-        x = self.unfold(x)
+        # x = self.unfold(x)
         for _ in range(self.b):
             x = self.separable_SA(x)
             x = self.feedforward(x)
