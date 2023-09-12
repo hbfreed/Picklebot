@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torchvision
 import torchvision.transforms as transforms
 from tqdm import tqdm
 from psutil import cpu_count
@@ -10,7 +11,7 @@ from torch.utils.data import DataLoader
 from tensorboardX import SummaryWriter
 from dataloader import PicklebotDataset, custom_collate
 from mobilenet import MobileNetLarge2D, MobileNetSmall2D, MobileNetSmall3D, MobileNetLarge3D
-
+torchvision.set_video_backend('video_reader')
 
 '''Balls are 0, strikes are 1'''
 
@@ -19,8 +20,8 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 learning_rate = 3e-4 #the paper quotes rmsprop with 0.1 lr, but we have a tiny batch size
 batch_size = 1 #the paper quotes 128 images/chip, but our hardware isn't good enough
-max_iters = 500
-eval_interval = 10
+max_iters = 2
+eval_interval = 1
 weight_decay=0.0005
 momentum=0.9
 eps=np.sqrt(0.002) #From the pytorch blog post, "a reasonable approximation can be taken with the formula PyTorch_eps = sqrt(TF_eps)."
@@ -31,8 +32,8 @@ val_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/ev
 test_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/test_labels.csv'
 
 #video paths
-train_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/train'
-val_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/val'
+train_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/training_test'
+val_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/eval_test'
 test_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/test'
 
 #dataset     

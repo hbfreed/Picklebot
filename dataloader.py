@@ -10,10 +10,10 @@ import torch.nn.functional as F
 def pad_batch(video,pad):
         video = video.transpose(0,-1)
         video = F.pad(video,(0,pad),value=2)
-        video = video.transpose(0,-1).transpose(0,1) #transpose back, we want channels to be first so that when we have batches we have N,C,T,H,W
+        video = video.permute(1,-1,2,3,0) #switch back, want channels to be first, so with batches, N,C,T,H,W
         return video
 
-def custom_collate(batch):
+def custom_collate(batch): #this custom collate pads our batch.
     padded_batch = torch.tensor([])
     labels = torch.tensor([])
     max_length = max(video[0].shape[0] for video in batch)
