@@ -43,4 +43,4 @@ class PicklebotDataset(Dataset):
             video = self.transform(video)
         if self.target_transform:
             label = self.target_transform(label)
-        return video, label
+        return video/255, label
