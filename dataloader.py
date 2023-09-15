@@ -37,7 +37,7 @@ class PicklebotDataset(Dataset):
         
     def __getitem__(self,idx):
         video_path = os.path.join(self.video_dir, self.video_labels.iloc[idx,0])
-        video = read_video(video_path,output_format="TCHW",pts_unit='sec')[0]/255
+        video = read_video(video_path,output_format="TCHW",pts_unit='sec')[0]
         label = self.video_labels.iloc[idx,1]
         if self.transform:
             video = self.transform(video)
