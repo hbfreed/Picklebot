@@ -10,7 +10,7 @@ import torch.nn.functional as F
 def pad_batch(video,pad):
         video = video.transpose(0,-1)
         video = F.pad(video,(0,pad),value=2)
-        video = video.permute(1,-1,2,3,0) #switch back, want channels to be first, so with batches, N,C,T,H,W
+        video = video.permute(1,-1,2,0) #switch back, want channels to be first, so with batches, N,C,T,H,W
         return video
 
 def custom_collate(batch): #this custom collate pads our batch.
@@ -37,10 +37,10 @@ class PicklebotDataset(Dataset):
         
     def __getitem__(self,idx):
         video_path = os.path.join(self.video_dir, self.video_labels.iloc[idx,0])
-        video = read_video(video_path,output_format="TCHW",pts_unit='sec')[0]
+        video = read_video(video_path,output_format="TCHW",pts_unit='sec')[0]/255
         label = self.video_labels.iloc[idx,1]
         if self.transform:
             video = self.transform(video)
         if self.target_transform:
             label = self.target_transform(label)
-        return video/255, label
+        return video, label

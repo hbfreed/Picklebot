@@ -68,7 +68,7 @@ def estimate_loss():
     val_accuracy = []
     #calculate the loss
     for val_features,val_labels in tqdm(val_loader):
-        val_features = (val_features/255).to(device)
+        val_features = val_features.to(device)
         val_labels = val_labels.to(torch.int64) #waiting to move to device until after forward pass, idk if this matters
         val_labels = val_labels.expand(val_features.shape[2]) #this is only for our lstm T -> batch size, a lame hack
         val_outputs = model(val_features)
