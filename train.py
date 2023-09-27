@@ -102,7 +102,6 @@ try:
             # labels = labels.expand(features.shape[2]) #this is a hack to make the labels the same shape as the outputs when we're using LSTM, so we can calculate the loss, but is lame.
             
             features = features.to(device) 
-            print(features.shape) 
             #zero the gradients
             optimizer.zero_grad(set_to_none=True)
             
