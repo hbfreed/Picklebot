@@ -18,9 +18,9 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #hyperparameters
 
 learning_rate = 3e-4 #the paper quotes rmsprop with 0.1 lr, but we have a tiny batch size
-batch_size = 1 #the paper quotes 128 images/chip, but our hardware isn't good enough
-max_iters = 2
-eval_interval = 1
+batch_size = 2 #the paper quotes 128 images/chip, but our hardware isn't good enough
+max_iters = 20
+eval_interval = 5
 weight_decay=0.0005
 momentum=0.9
 eps=np.sqrt(0.002) #From the pytorch blog post, "a reasonable approximation can be taken with the formula PyTorch_eps = sqrt(TF_eps)."
