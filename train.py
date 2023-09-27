@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from tensorboardX import SummaryWriter
 from dataloader import PicklebotDataset, custom_collate
 from mobilenet import MobileNetLarge2D, MobileNetSmall2D, MobileNetSmall3D, MobileNetLarge3D
-from helpers import calculate_accuracy, initialize_mobilenetv3_weights
+from helpers import calculate_accuracy, initialize_mobilenet_weights
 
 '''Balls are 0, strikes are 1'''
 
@@ -47,15 +47,15 @@ test_dataset = PicklebotDataset(test_annotations_file,test_video_paths,transform
 test_loader = DataLoader(test_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count())
 
 #model, optimizer, loss function
-model = MobileNetLarge2D(num_classes=2)
+model = MobileNetSmall3D(num_classes=2)
 
 #initialize the weights
-initialize_mobilenetv3_weights(model)
+initialize_mobilenet_weights(model)
 
 #optimizer = optim.RMSprop(params=model.parameters(),lr=learning_rate,weight_decay=weight_decay,momentum=momentum,eps=eps) #starting with AdamW for now. 
 optimizer = optim.AdamW(params=model.parameters(),lr=learning_rate)
 criterion = nn.CrossEntropyLoss(ignore_index=2)#ignore_index=0 was ignoring the label 0!
-model_name = 'mobilenetlarge2d_overfit'
+model_name = 'mobilenetsmall3d'
 model = model.to(device)
 # model.load_state_dict(torch.load(f'{model_name}.pth')) #if applicable, load the model from the last checkpoint
 writer = SummaryWriter(f'runs/{model_name}')
@@ -99,7 +99,7 @@ try:
         for batch_idx, (features,labels) in tqdm(enumerate(train_loader)):
             
             labels = labels.to(torch.int64)
-            labels = labels.expand(features.shape[2]) #this is a hack to make the labels the same shape as the outputs when we're using LSTM, so we can calculate the loss, but is lame.
+            # labels = labels.expand(features.shape[2]) #this is a hack to make the labels the same shape as the outputs when we're using LSTM, so we can calculate the loss, but is lame.
             
             features = features.to(device) 
             print(features.shape) 

@@ -8,7 +8,7 @@ def calculate_accuracy(outputs,labels):
     num_correct = torch.sum(predicted_classes == labels).item()
     return num_correct
 
-def initialize_mobilenetv3_weights(model):
+def initialize_mobilenet_weights(model):
     for module in model.modules():
         if isinstance(module, nn.Conv2d) or isinstance(module, nn.Conv3d):
             # Initialize convolutional layers with appropriate initialization
