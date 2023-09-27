@@ -26,13 +26,13 @@ momentum=0.9
 eps=np.sqrt(0.002) #From the pytorch blog post, "a reasonable approximation can be taken with the formula PyTorch_eps = sqrt(TF_eps)."
 
 #annotations paths
-train_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/training_test/training_test_labels.csv' #NEED TO CHANGE THIS TO GO BACK TO REAL TRAIN AND TEST'''
-val_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/eval_test/eval_test_labels.csv' #NEED TO CHANGE THIS TO GO BACK TO REAL TRAIN AND TEST'''
+train_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/train_small_files.csv' #NEED TO CHANGE THIS TO GO BACK TO REAL TRAIN AND TEST'''
+val_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/val_small_files.csv' #NEED TO CHANGE THIS TO GO BACK TO REAL TRAIN AND TEST'''
 test_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/test_labels.csv'
 
 #video paths
-train_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/training_test'
-val_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/eval_test'
+train_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/train'
+val_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/val'
 test_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/test'
 
 #dataset     
@@ -102,7 +102,7 @@ try:
             labels = labels.expand(features.shape[2]) #this is a hack to make the labels the same shape as the outputs when we're using LSTM, so we can calculate the loss, but is lame.
             
             features = features.to(device) 
-            
+            print(features.shape) 
             #zero the gradients
             optimizer.zero_grad(set_to_none=True)
             
