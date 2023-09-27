@@ -3,7 +3,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision
 import torchvision.transforms as transforms
 from tqdm import tqdm
 from psutil import cpu_count
@@ -11,7 +10,7 @@ from torch.utils.data import DataLoader
 from tensorboardX import SummaryWriter
 from dataloader import PicklebotDataset, custom_collate
 from mobilenet import MobileNetLarge2D, MobileNetSmall2D, MobileNetSmall3D, MobileNetLarge3D
-torchvision.set_video_backend('video_reader')
+from helpers import calculate_accuracy, initialize_mobilenetv3_weights
 
 '''Balls are 0, strikes are 1'''
 
@@ -48,7 +47,11 @@ test_dataset = PicklebotDataset(test_annotations_file,test_video_paths,transform
 test_loader = DataLoader(test_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count())
 
 #model, optimizer, loss function
-model = MobileNetLarge2D()
+model = MobileNetLarge2D(num_classes=2)
+
+#initialize the weights
+initialize_mobilenetv3_weights(model)
+
 #optimizer = optim.RMSprop(params=model.parameters(),lr=learning_rate,weight_decay=weight_decay,momentum=momentum,eps=eps) #starting with AdamW for now. 
 optimizer = optim.AdamW(params=model.parameters(),lr=learning_rate)
 criterion = nn.CrossEntropyLoss(ignore_index=2)#ignore_index=0 was ignoring the label 0!
@@ -69,7 +72,7 @@ def estimate_loss():
     #calculate the loss
     for val_features,val_labels in tqdm(val_loader):
         val_features = val_features.to(device)
-        val_labels = val_labels.to(torch.int64) #waiting to move to device until after forward pass, idk if this matters
+        val_labels = val_labels.to(torch.int64) #waiting to move to device until after forward pass, idk if this matters, but i imagine it could save gpu memory
         val_labels = val_labels.expand(val_features.shape[2]) #this is only for our lstm T -> batch size, a lame hack
         val_outputs = model(val_features)
         val_loss = criterion(val_outputs,val_labels.to(device))
@@ -79,11 +82,6 @@ def estimate_loss():
     avg_val_loss = total_val_loss / num_val_batches
     val_accuracy = val_correct / len(val_dataset)
     return avg_val_loss, val_accuracy
-
-def calculate_accuracy(outputs,labels):
-    predicted_classes = torch.argmax(outputs,dim=1).to(labels.device)
-    num_correct = torch.sum(predicted_classes == labels).item()
-    return num_correct
 
 #try except block so we can manually early stop while saving the model
 #training loop
