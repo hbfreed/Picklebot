@@ -5,11 +5,11 @@ from torch.utils.data import Dataset
 from torchvision.io import read_video
 import torch.nn.functional as F
 
-'''Balls are 0, strikes are 1'''
+'''Balls are 1, strikes are 2'''
 
 def pad_batch(video,pad):
         video = video.transpose(0,-1)
-        video = F.pad(video,(0,pad),value=2)
+        video = F.pad(video,(0,pad),value=0)
         video = video.permute(1,-1,2,0) #switch back, want channels to be first, so with batches, N,C,T,H,W
         return video
 

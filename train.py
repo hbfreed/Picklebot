@@ -12,7 +12,7 @@ from dataloader import PicklebotDataset, custom_collate
 from mobilenet import MobileNetLarge2D, MobileNetSmall2D, MobileNetSmall3D, MobileNetLarge3D
 from helpers import calculate_accuracy, initialize_mobilenet_weights
 
-'''Balls are 0, strikes are 1'''
+'''Balls are 1, strikes are 2 since 0 is the padding index.'''
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #hyperparameters
@@ -54,7 +54,7 @@ initialize_mobilenet_weights(model)
 
 #optimizer = optim.RMSprop(params=model.parameters(),lr=learning_rate,weight_decay=weight_decay,momentum=momentum,eps=eps) #starting with AdamW for now. 
 optimizer = optim.AdamW(params=model.parameters(),lr=learning_rate)
-criterion = nn.CrossEntropyLoss(ignore_index=2)#ignore_index=0 was ignoring the label 0!
+criterion = nn.CrossEntropyLoss(ignore_index=0) #ignore the padding index
 model_name = 'mobilenetsmall3d'
 model = model.to(device)
 # model.load_state_dict(torch.load(f'{model_name}.pth')) #if applicable, load the model from the last checkpoint
