@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 def pad_batch(video,pad):
         video = video.transpose(0,-1)
-        video = F.pad(video,(0,pad),value=0)
+        video = F.pad(video,(0,pad),value=0) #pad T with zeros
         video = video.permute(1,-1,2,0) #switch back, want channels to be first, so with batches, N,C,T,H,W
         return video
 
