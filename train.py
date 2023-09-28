@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torchvision.transforms as transforms
+from torch.cuda.amp import GradScaler, autocast
 from tqdm import tqdm
 from psutil import cpu_count
 from torch.utils.data import DataLoader
@@ -21,9 +22,10 @@ learning_rate = 0.01 #the paper quotes rmsprop with 0.1 lr, but we have a tiny b
 batch_size = 6 #the paper quotes 128 images/chip, but our hardware isn't good enough
 max_iters = 200
 eval_interval = 5
-weight_decay=0.0005
-momentum=0.9
-eps=np.sqrt(0.002) #From the pytorch blog post, "a reasonable approximation can be taken with the formula PyTorch_eps = sqrt(TF_eps)."
+weight_decay = 0.0005
+momentum = 0.9
+eps = np.sqrt(0.002) #From the pytorch blog post, "a reasonable approximation can be taken with the formula PyTorch_eps = sqrt(TF_eps)."
+use_autocast = False #turn mixed precision training on or off
 
 #annotations paths
 train_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/train_small_files.csv' #NEED TO CHANGE THIS TO GO BACK TO REAL TRAIN AND TEST'''
@@ -57,6 +59,8 @@ optimizer = optim.AdamW(params=model.parameters(),lr=learning_rate)
 criterion = nn.CrossEntropyLoss(ignore_index=0) #ignore the padding index
 model_name = 'mobilenetsmall3d'
 model = model.to(device)
+if use_autocast:
+    scaler = GradScaler()
 model.load_state_dict(torch.load(f'{model_name}.pth')) #if applicable, load the model from the last checkpoint
 writer = SummaryWriter(f'runs/{model_name}')
 
@@ -104,7 +108,21 @@ try:
             features = features.to(device) 
             #zero the gradients
             optimizer.zero_grad(set_to_none=True)
-            
+
+        if use_autocast:
+            with autocast():
+                outputs = model(features)
+                loss = criterion(outputs,labels.to(device))
+                train_correct.append(calculate_accuracy(outputs,labels))
+                train_losses.append(loss.item())
+                writer.add_scalar('training loss', loss.item(), batch_idx + iter*len(train_loader))
+
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+
+
+        else:
             outputs = model(features)
             loss = criterion(outputs,labels.to(device))
     
