@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 from torchvision.io import read_video
 import torch.nn.functional as F
 
-'''Balls are 1, strikes are 2'''
+'''Strikes are 1, balls are 2'''
 
 def pad_batch(video,pad):
         video = video.transpose(0,-1)
