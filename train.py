@@ -17,9 +17,9 @@ from helpers import calculate_accuracy, initialize_mobilenet_weights
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #hyperparameters
 
-learning_rate = 3e-4 #the paper quotes rmsprop with 0.1 lr, but we have a tiny batch size
-batch_size = 2 #the paper quotes 128 images/chip, but our hardware isn't good enough
-max_iters = 20
+learning_rate = 0.01 #the paper quotes rmsprop with 0.1 lr, but we have a tiny batch size
+batch_size = 6 #the paper quotes 128 images/chip, but our hardware isn't good enough
+max_iters = 200
 eval_interval = 5
 weight_decay=0.0005
 momentum=0.9
@@ -57,7 +57,7 @@ optimizer = optim.AdamW(params=model.parameters(),lr=learning_rate)
 criterion = nn.CrossEntropyLoss(ignore_index=0) #ignore the padding index
 model_name = 'mobilenetsmall3d'
 model = model.to(device)
-# model.load_state_dict(torch.load(f'{model_name}.pth')) #if applicable, load the model from the last checkpoint
+model.load_state_dict(torch.load(f'{model_name}.pth')) #if applicable, load the model from the last checkpoint
 writer = SummaryWriter(f'runs/{model_name}')
 
 
@@ -73,7 +73,7 @@ def estimate_loss():
     for val_features,val_labels in tqdm(val_loader):
         val_features = val_features.to(device)
         val_labels = val_labels.to(torch.int64) #waiting to move to device until after forward pass, idk if this matters, but i imagine it could save gpu memory
-        val_labels = val_labels.expand(val_features.shape[2]) #this is only for our lstm T -> batch size, a lame hack
+        # val_labels = val_labels.expand(val_features.shape[2]) #this is only for our lstm T -> batch size, a lame hack
         val_outputs = model(val_features)
         val_loss = criterion(val_outputs,val_labels.to(device))
         total_val_loss += val_loss.item()
