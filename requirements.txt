@@ -1,0 +1,4 @@
+ipympl
+pandas
+matplotlib
+gdown
