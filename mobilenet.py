@@ -111,7 +111,7 @@ class Bottleneck2D(nn.Module):
         return x        
 
 
-#MobileNetV3-Large
+#MobileNetV3-Large 2D + LSTM for helping with the temporal dimension
 class MobileNetLarge2D(nn.Module):
     def __init__(self, num_classes=2):
         super().__init__()
@@ -246,6 +246,8 @@ class MobileNetSmall2D(nn.Module):
         x = F.softmax(x,dim=1).to(torch.float16)
         return x
 
+
+#mobilenet large 3d convolutions
 class MobileNetLarge3D(nn.Module):
     def __init__(self,num_classes=2):
         super().__init__()
@@ -322,7 +324,7 @@ class MobileNetLarge3D(nn.Module):
         x = x.view(x.shape[0], self.num_classes)
         return x
 
-
+#mobilenet small 3d convolutions
 class MobileNetSmall3D(nn.Module):
     def __init__(self,num_classes=2):
         super().__init__()
