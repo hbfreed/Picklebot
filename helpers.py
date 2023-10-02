@@ -27,5 +27,6 @@ def initialize_mobilenet_weights(model):
 @pipeline_def
 def video_pipeline(file_root, sequence_length, initial_prefetch_size):
     videos, labels = fn.readers.video(device="gpu", file_root=file_root, sequence_length=sequence_length,
-                              shard_id=0, num_shards=1, random_shuffle=True, initial_fill=initial_prefetch_size,pad_sequences=True)   
+                              shard_id=0, num_shards=1, random_shuffle=True, initial_fill=initial_prefetch_size,pad_sequences=True,
+                              file_list_include_preceding_frame=False)
     return videos, labels
