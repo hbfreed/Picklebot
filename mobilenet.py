@@ -3,6 +3,7 @@ Implementing Mobilenet v3 as seen in
 "Searching for MobileNetV3" for video classification,
 note that balls are 0 and strikes are 1.
 '''
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -166,7 +167,7 @@ class MobileNetLarge2D(nn.Module):
 
     def forward(self,x):
         #reshape from N,C,T,H,W to N*T,C,H,W for 2d convolutions, we will keep N as 1
-        x = x.view(x.shape[0]*x.shape[2],x.shape[1],x.shape[3],x.shape[4])
+        x = x.reshape(x.shape[0]*x.shape[2],x.shape[1],x.shape[3],x.shape[4])
         x = self.block1(x)
         x = self.block2(x)
         x = self.block3(x)
@@ -179,7 +180,7 @@ class MobileNetLarge2D(nn.Module):
         x, _ = self.lstm(x)
         x = x[:,-1,:]
         x = self.classifier(x)
-        x = F.softmax(x,dim=1)
+        x = F.softmax(x,dim=1).to(torch.float16)
         return x
 
 
@@ -231,7 +232,7 @@ class MobileNetSmall2D(nn.Module):
 
     def forward(self,x):
         #reshape from N,C,T,H,W to N*T,C,H,W for 2d convolutions, we will keep N as 1
-        x = x.view(x.shape[0]*x.shape[2],x.shape[1],x.shape[3],x.shape[4])
+        x = x.reshape(x.shape[0]*x.shape[2],x.shape[1],x.shape[3],x.shape[4])
         x = self.block1(x)
         x = self.block2(x)
         x = self.block3(x)
@@ -242,7 +243,7 @@ class MobileNetSmall2D(nn.Module):
         x, _ = self.lstm(x)
         x = x[:,-1,:]
         x = self.classifier(x)
-        x = F.softmax(x,dim=1)
+        x = F.softmax(x,dim=1).to(torch.float16)
         return x
 
 class MobileNetLarge3D(nn.Module):
