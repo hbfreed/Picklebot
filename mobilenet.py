@@ -5,6 +5,7 @@ note that balls are 0 and strikes are 1.
 '''
 import torch
 import torch.nn as nn
+import torch.nn.init as init
 import torch.nn.functional as F
 
 class SEBlock3D(nn.Module):
@@ -118,6 +119,18 @@ class MobileNetLarge2D(nn.Module):
 
         self.num_classes = num_classes
 
+    def initialize_weights(self):
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
+                if hasattr(module, "nonlinearity"):
+                    if module.nonlinearity == 'relu':
+                        init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+                    elif module.nonlinearity == 'hardswish':
+                        init.xavier_uniform_(module.weight)
+            elif isinstance(module, nn.BatchNorm2d):
+                init.constant_(module.weight, 1)
+                init.constant_(module.bias, 0)
+
     #conv2d (h-swish): 224x224x3 -> 112x112x16
         self.block1 = nn.Sequential(
             nn.Conv2d(in_channels=3,out_channels=16,stride=2,kernel_size=3,padding=1),
@@ -192,6 +205,18 @@ class MobileNetSmall2D(nn.Module):
 
         self.num_classes = num_classes
 
+    def initialize_weights(self):
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
+                if hasattr(module, "nonlinearity"):
+                    if module.nonlinearity == 'relu':
+                        init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+                    elif module.nonlinearity == 'hardswish':
+                        init.xavier_uniform_(module.weight)
+            elif isinstance(module, nn.BatchNorm2d):
+                init.constant_(module.weight, 1)
+                init.constant_(module.bias, 0)
+
     #conv3d (h-swish): 224x224x3 -> 112x112x16
         self.block1 = nn.Sequential(
             nn.Conv2d(in_channels=3,out_channels=16,kernel_size=3,stride=2,padding=1),
@@ -253,7 +278,19 @@ class MobileNetLarge3D(nn.Module):
         super().__init__()
 
         self.num_classes = num_classes
-    
+
+    def initialize_weights(self):
+        for module in self.modules():
+            if isinstance(module, nn.Conv3d) or isinstance(module, nn.Linear):
+                if hasattr(module, "nonlinearity"):
+                    if module.nonlinearity == 'relu':
+                        init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+                    elif module.nonlinearity == 'hardswish':
+                        init.xavier_uniform_(module.weight)
+            elif isinstance(module, nn.BatchNorm3d):
+                init.constant_(module.weight, 1)
+                init.constant_(module.bias, 0)
+
     #conv3d (h-swish): 224x224x3 -> 112x112x16
         self.block1 = nn.Sequential(
             nn.Conv3d(in_channels=3,out_channels=16,stride=2,kernel_size=3,padding=1),
@@ -330,6 +367,18 @@ class MobileNetSmall3D(nn.Module):
         super().__init__()
 
         self.num_classes = num_classes
+
+    def initialize_weights(self):
+        for module in self.modules():
+            if isinstance(module, nn.Conv3d) or isinstance(module, nn.Linear):
+                if hasattr(module, "nonlinearity"):
+                    if module.nonlinearity == 'relu':
+                        init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+                    elif module.nonlinearity == 'hardswish':
+                        init.xavier_uniform_(module.weight)
+            elif isinstance(module, nn.BatchNorm3d):
+                init.constant_(module.weight, 1)
+                init.constant_(module.bias, 0)
 
     #conv3d (h-swish): 224x224x3 -> 112x112x16
         self.block1 = nn.Sequential(
