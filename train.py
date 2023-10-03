@@ -21,7 +21,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 #hyperparameters
 learning_rate = 3e-4 #the paper quotes rmsprop with 0.1 lr, but we have a tiny batch size, and are using AdamW
-batch_size = 2 #the paper quotes 128 images/chip, but with video we have to change this
+batch_size = 4 #the paper quotes 128 images/chip, but with video we have to change this
 max_iters = 1000
 eval_interval = 2
 weight_decay = 0.0005
@@ -37,12 +37,12 @@ train_video_paths = '/workspace/picklebotdataset/train'
 val_video_paths = '/workspace/picklebotdataset/val'
 
 #annotations paths
-train_annotations_file = '/home/hankhome/Documents/PythonProjects/picklebotdataset/train_labels.csv'
-val_annotations_file = '/home/hankhome/Documents/PythonProjects/picklebotdataset/val_labels.csv'
+train_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/train_labels.csv'
+val_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/val_labels.csv'
 
 #video paths
-train_video_paths = '/home/hankhome/Documents/PythonProjects/picklebotdataset/train_all_together'
-val_video_paths = '/home/hankhome/Documents/PythonProjects/picklebotdataset/val_all_together'
+train_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/train_all_together'
+val_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/val_all_together'
 
 #establish our normalization using transforms, 
 #note that we are doing this in our dataloader as opposed to in the training loop like with dali
@@ -69,7 +69,7 @@ optimizer = optim.AdamW(params=model.parameters(),lr=learning_rate, weight_decay
 criterion = nn.CrossEntropyLoss()
 if use_autocast:
     scaler = GradScaler()
-model_name = 'mobilenetsmall_3D_cloud' 
+model_name = 'mobilenetsmall_3D_local' 
 # model.load_state_dict(torch.load(f'{model_name}.pth')) #if applicable, load the model from the last checkpoint
 writer = SummaryWriter(f'runs/{model_name}')
 
