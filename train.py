@@ -20,7 +20,7 @@ from helpers import calculate_accuracy
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 #hyperparameters
-learning_rate = 3e-4 #the paper quotes rmsprop with 0.1 lr, but we have a tiny batch size, and are using AdamW
+learning_rate = 1e-5 #the paper quotes rmsprop with 0.1 lr, but we have a tiny batch size, and are using AdamW
 batch_size = 4 #the paper quotes 128 images/chip, but with video we have to change this
 max_iters = 1000
 eval_interval = 2
