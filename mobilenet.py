@@ -370,8 +370,6 @@ class MobileNetSmall3D(nn.Module):
 
         self.num_classes = num_classes
 
-
-
     #conv3d (h-swish): 224x224x3 -> 112x112x16
         self.block1 = nn.Sequential(
             nn.Conv3d(in_channels=3,out_channels=16,kernel_size=3,stride=2,padding=1),
@@ -452,11 +450,9 @@ class MobileNetTiny3D(nn.Module):
         
         self.num_classes = num_classes
 
-
-
        # conv block 
         self.block1 = nn.Sequential(
-           nn.Conv3d(3, 8, kernel_size=3, stride=2, padding=1),
+           nn.Conv3d(in_channels=3, out_channels=8, kernel_size=3, stride=2, padding=1),
            nn.BatchNorm3d(8),
            nn.Hardswish()
         )
@@ -474,33 +470,27 @@ class MobileNetTiny3D(nn.Module):
 
         # classifier
         self.block4 = nn.Sequential(
-            nn.Conv3d(16, 128, kernel_size=1),
-            SEBlock3D(128), 
-            nn.BatchNorm3d(128),
+            nn.Conv3d(16, 128, kernel_size=1, stride=1, padding=0),
+            nn.Conv3d(128,256,kernel_size=3,stride=2,padding=1),
+            SEBlock3D(256), 
+            nn.BatchNorm3d(256),
             nn.Hardswish()
         )           
         
-        self.classifier =  nn.Conv3d(128, num_classes, kernel_size=1)
+        self.classifier =  nn.Conv3d(256, num_classes, kernel_size=1)
 
         
     def forward(self, x):
         x = self.block1(x)
-        print(x.shape)
         x = self.block2(x)
-        print(x.shape)
         x = self.block3(x)
-        print(x.shape)
         x = self.block4(x)
-        print(x.shape)
         T = x.shape[2]
         avg_pool_layer = nn.AvgPool3d(kernel_size=(T,7,7),stride=1)
         x = avg_pool_layer(x)
-        print(x.shape)
         x = self.classifier(x)        
         x = F.softmax(x,dim=1)
-        print(x.shape)
         x = x.view(x.shape[0], self.num_classes)
-        print(x.shape)
         return x
     
     def initialize_weights(self):
