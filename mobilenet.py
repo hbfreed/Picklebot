@@ -205,17 +205,6 @@ class MobileNetSmall2D(nn.Module):
 
         self.num_classes = num_classes
 
-    def initialize_weights(self):
-        for module in self.modules():
-            if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
-                if hasattr(module, "nonlinearity"):
-                    if module.nonlinearity == 'relu':
-                        init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
-                    elif module.nonlinearity == 'hardswish':
-                        init.xavier_uniform_(module.weight)
-            elif isinstance(module, nn.BatchNorm2d):
-                init.constant_(module.weight, 1)
-                init.constant_(module.bias, 0)
 
     #conv3d (h-swish): 224x224x3 -> 112x112x16
         self.block1 = nn.Sequential(
@@ -249,10 +238,10 @@ class MobileNetSmall2D(nn.Module):
             nn.AvgPool2d(kernel_size=7,stride=1)
             )
     #LSTM: 1x1x576 ->
-        self.lstm = nn.LSTM(input_size=576,hidden_size=32,num_layers=5,batch_first=True)
+        self.lstm = nn.LSTM(input_size=576,hidden_size=64,num_layers=1,batch_first=True)
     #classifier: conv3d 1x1 NBN (2, first uses h-swish): 1x1x576
         self.classifier = nn.Sequential(
-            nn.Linear(32,self.num_classes) #2 classes for ball/strike
+            nn.Linear(64,self.num_classes) #2 classes for ball/strike
             )
 
     def forward(self,x):
@@ -270,6 +259,19 @@ class MobileNetSmall2D(nn.Module):
         x = self.classifier(x)
         x = F.softmax(x,dim=1).to(torch.float16)
         return x
+    
+    def initialize_weights(self):
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
+                if hasattr(module, "nonlinearity"):
+                    if module.nonlinearity == 'relu':
+                        init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+                    elif module.nonlinearity == 'hardswish':
+                        init.xavier_uniform_(module.weight)
+            elif isinstance(module, nn.BatchNorm2d):
+                init.constant_(module.weight, 1)
+                init.constant_(module.bias, 0)
+
 
 
 #mobilenet large 3d convolutions
@@ -278,18 +280,6 @@ class MobileNetLarge3D(nn.Module):
         super().__init__()
 
         self.num_classes = num_classes
-
-    def initialize_weights(self):
-        for module in self.modules():
-            if isinstance(module, nn.Conv3d) or isinstance(module, nn.Linear):
-                if hasattr(module, "nonlinearity"):
-                    if module.nonlinearity == 'relu':
-                        init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
-                    elif module.nonlinearity == 'hardswish':
-                        init.xavier_uniform_(module.weight)
-            elif isinstance(module, nn.BatchNorm3d):
-                init.constant_(module.weight, 1)
-                init.constant_(module.bias, 0)
 
     #conv3d (h-swish): 224x224x3 -> 112x112x16
         self.block1 = nn.Sequential(
@@ -361,13 +351,6 @@ class MobileNetLarge3D(nn.Module):
         x = x.view(x.shape[0], self.num_classes)
         return x
 
-#mobilenet small 3d convolutions
-class MobileNetSmall3D(nn.Module):
-    def __init__(self,num_classes=2):
-        super().__init__()
-
-        self.num_classes = num_classes
-
     def initialize_weights(self):
         for module in self.modules():
             if isinstance(module, nn.Conv3d) or isinstance(module, nn.Linear):
@@ -379,6 +362,15 @@ class MobileNetSmall3D(nn.Module):
             elif isinstance(module, nn.BatchNorm3d):
                 init.constant_(module.weight, 1)
                 init.constant_(module.bias, 0)
+
+#mobilenet small 3d convolutions
+class MobileNetSmall3D(nn.Module):
+    def __init__(self,num_classes=2):
+        super().__init__()
+
+        self.num_classes = num_classes
+
+
 
     #conv3d (h-swish): 224x224x3 -> 112x112x16
         self.block1 = nn.Sequential(
@@ -397,7 +389,7 @@ class MobileNetSmall3D(nn.Module):
         self.block3 = nn.Sequential(
             Bottleneck3D(in_channels=24,out_channels=40,expanded_channels=96,stride=2,use_se=True,kernel_size=5),
             Bottleneck3D(in_channels=40,out_channels=40,expanded_channels=240,stride=1,use_se=True,kernel_size=5),
-            Bottleneck3D(in_channels=40,out_channels=40,expanded_channels=240,stride=1,use_se=True,kernel_size=5),
+            Bottleneck3D(in_channels=40,out_channels=40,expanded_channels=240,stride=1,use_se=True,kernel_size=5), 
             Bottleneck3D(in_channels=40,out_channels=48,expanded_channels=120,stride=1,use_se=True,kernel_size=5),
             Bottleneck3D(in_channels=48,out_channels=48,expanded_channels=144,stride=1,use_se=True,kernel_size=5),
             Bottleneck3D(in_channels=48,out_channels=96,expanded_channels=288,stride=2,use_se=True,kernel_size=5),
@@ -420,16 +412,151 @@ class MobileNetSmall3D(nn.Module):
 
     def forward(self,x):
         x = self.block1(x)
+        print(x.shape)
         x = self.block2(x)
+        print(x.shape)
         x = self.block3(x)
+        print(x.shape)
         x = self.block4(x)
-        
+        print(x.shape)
         #dynamically get size of T, use for avg pooling
         T = x.shape[2]
         avg_pool_layer = nn.AvgPool3d(kernel_size=(T,7,7),stride=1)
         x = avg_pool_layer(x)
+        print(x.shape)
 
         x = self.classifier(x)
+        print(x.shape)
         x = F.softmax(x,dim=1)
+        print(x.shape)
         x = x.view(x.shape[0], self.num_classes)
+        print(x.shape)
         return x
+    def initialize_weights(self):
+        for module in self.modules():
+            if isinstance(module, nn.Conv3d) or isinstance(module, nn.Linear):
+                if hasattr(module, "nonlinearity"):
+                    if module.nonlinearity == 'relu':
+                        init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+                    elif module.nonlinearity == 'hardswish':
+                        init.xavier_uniform_(module.weight)
+            elif isinstance(module, nn.BatchNorm3d):
+                init.constant_(module.weight, 1)
+                init.constant_(module.bias, 0)
+
+#mobilenet tiny for testing if our models above are too deep.
+class MobileNetTiny3D(nn.Module):
+
+    def __init__(self, num_classes=2):
+        super().__init__()
+        
+        self.num_classes = num_classes
+
+
+
+       # conv block 
+        self.block1 = nn.Sequential(
+           nn.Conv3d(3, 8, kernel_size=3, stride=2, padding=1),
+           nn.BatchNorm3d(8),
+           nn.Hardswish()
+        )
+        
+       # bottleneck blocks
+        self.block2 = nn.Sequential(
+            Bottleneck3D(8, 8, 8, stride=2, use_se=True),  
+            Bottleneck3D(8, 12, 36, stride=2)            
+        )
+        
+        self.block3 = nn.Sequential(    
+            Bottleneck3D(12, 16, 48, stride=2, use_se=True),
+            Bottleneck3D(16, 16, 48, stride=1, use_se=True)        
+        )
+
+        # classifier
+        self.block4 = nn.Sequential(
+            nn.Conv3d(16, 128, kernel_size=1),
+            SEBlock3D(128), 
+            nn.BatchNorm3d(128),
+            nn.Hardswish()
+        )           
+        
+        self.classifier =  nn.Conv3d(128, num_classes, kernel_size=1)
+
+        
+    def forward(self, x):
+        x = self.block1(x)
+        print(x.shape)
+        x = self.block2(x)
+        print(x.shape)
+        x = self.block3(x)
+        print(x.shape)
+        x = self.block4(x)
+        print(x.shape)
+        T = x.shape[2]
+        avg_pool_layer = nn.AvgPool3d(kernel_size=(T,7,7),stride=1)
+        x = avg_pool_layer(x)
+        print(x.shape)
+        x = self.classifier(x)        
+        x = F.softmax(x,dim=1)
+        print(x.shape)
+        x = x.view(x.shape[0], self.num_classes)
+        print(x.shape)
+        return x
+    
+    def initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv3d):
+                nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, nn.BatchNorm3d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+#same but 2d convs and lstm
+class MobileNetTiny2D(nn.Module):
+
+    def __init__(self, num_classes=2):
+        super().__init__()
+        
+        self.num_classes = num_classes
+
+        # conv block
+        self.block1 = nn.Sequential(
+            nn.Conv2d(3, 8, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(8),
+            nn.Hardswish()
+        )
+        
+        # bottleneck blocks
+        self.block2 = nn.Sequential(
+            Bottleneck2D(8, 8, 8, stride=2, use_se=True),
+            Bottleneck2D(8, 12, 36, stride=2)
+        )
+        
+        self.block3 = nn.Sequential(
+           Bottleneck2D(12, 16, 48, stride=2, use_se=True),
+           Bottleneck2D(16, 16, 48, stride=1, use_se=True)
+        )
+
+        # LSTM
+        self.lstm = nn.LSTM(16*4*4, 16, batch_first=True)
+        
+        # classifier 
+        self.classifier = nn.Linear(16, num_classes)
+
+    def forward(self, x):
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = x.reshape(x.shape[0], -1, x.shape[-3]*x.shape[-2]*x.shape[-1]) 
+        x, _ = self.lstm(x)
+        x = self.classifier(x[:,-1,:]) 
+        return x
+    
+
+    def initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
