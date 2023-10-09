@@ -434,6 +434,83 @@ class MobileNetSmall3D(nn.Module):
                 init.constant_(module.weight, 1)
                 init.constant_(module.bias, 0)
 
+
+
+#mobilenet 2D no lstm.
+#MobileNetV3-Small 2d with lstm for helping with the temporal dimension
+class MobileNetSmall2DNoLSTM(nn.Module):
+    def __init__(self,num_classes=2):
+        super().__init__()
+
+        self.num_classes = num_classes
+
+
+    #conv3d (h-swish): 224x224x3 -> 112x112x16
+        self.block1 = nn.Sequential(
+            nn.Conv2d(in_channels=3,out_channels=16,kernel_size=3,stride=2,padding=1),
+            nn.BatchNorm2d(16),
+            nn.Hardswish()
+            )
+    #3x3 bottlenecks (3, ReLU, first gets squeeze-excite): 112x112x16 -> 28x28x24
+        self.block2 = nn.Sequential(
+            Bottleneck2D(in_channels=16,out_channels=16,expanded_channels=16,stride=2,use_se=True,nonlinearity=nn.ReLU()),
+            Bottleneck2D(in_channels=16,out_channels=24,expanded_channels=72,stride=2,nonlinearity=nn.ReLU()),
+            Bottleneck2D(in_channels=24,out_channels=24,expanded_channels=88,stride=1,nonlinearity=nn.ReLU())
+            )
+    #5x5 bottlenecks (8, h-swish, squeeze-excite): 28x28x24 -> 7x7x96
+        self.block3 = nn.Sequential(
+            Bottleneck2D(in_channels=24,out_channels=40,expanded_channels=96,stride=2,use_se=True,kernel_size=5),
+            Bottleneck2D(in_channels=40,out_channels=40,expanded_channels=240,stride=1,use_se=True,kernel_size=5),
+            Bottleneck2D(in_channels=40,out_channels=40,expanded_channels=240,stride=1,use_se=True,kernel_size=5),
+            Bottleneck2D(in_channels=40,out_channels=48,expanded_channels=120,stride=1,use_se=True,kernel_size=5),
+            Bottleneck2D(in_channels=48,out_channels=48,expanded_channels=144,stride=1,use_se=True,kernel_size=5),
+            Bottleneck2D(in_channels=48,out_channels=96,expanded_channels=288,stride=2,use_se=True,kernel_size=5),
+            Bottleneck2D(in_channels=96,out_channels=96,expanded_channels=576,stride=1,use_se=True,kernel_size=5),
+            Bottleneck2D(in_channels=96,out_channels=96,expanded_channels=576,stride=1,use_se=True,kernel_size=5)
+            )
+    #conv2d (h-swish), avg pool 7x7: 7x7x96 -> 1x1x576
+        self.block4 = nn.Sequential(
+            nn.Conv2d(in_channels=96,out_channels=576,kernel_size=1,stride=1,padding=0),
+            SEBlock2D(channels=576),
+            nn.BatchNorm2d(576),
+            nn.Hardswish(),
+            nn.AvgPool2d(kernel_size=7,stride=1)
+            )
+    #classifier: conv3d 1x1 NBN (2, first uses h-swish): 1x1x576
+        self.classifier = nn.Sequential(
+            nn.Linear(576,self.num_classes) #2 classes for ball/strike
+            )
+
+    def forward(self,x):
+        #reshape from N,C,T,H,W to N*T,C,H,W for 2d convolutions, we will keep N as 1
+        x = x.reshape(x.shape[0]*x.shape[2],x.shape[1],x.shape[3],x.shape[4])
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.block4(x)
+        #reshape for LSTM
+        x = x.permute(0,2,1,3).contiguous()
+        x = x.view(x.shape[0],x.shape[1],x.shape[2])
+        x, _ = self.lstm(x)
+        x = x[:,-1,:]
+        x = self.classifier(x)
+        x = F.softmax(x,dim=1).to(torch.float16)
+        return x
+    
+    def initialize_weights(self):
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
+                if hasattr(module, "nonlinearity"):
+                    if module.nonlinearity == 'relu':
+                        init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+                    elif module.nonlinearity == 'hardswish':
+                        init.xavier_uniform_(module.weight)
+            elif isinstance(module, nn.BatchNorm2d):
+                init.constant_(module.weight, 1)
+                init.constant_(module.bias, 0)
+
+
+
 #mobilenet tiny for testing if our models above are too deep.
 # MobileNetTiny3D
 class MobileNetTiny3D(nn.Module):
