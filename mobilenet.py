@@ -515,56 +515,40 @@ class MobileNetSmall2DNoLSTM(nn.Module):
 # MobileNetTiny3D
 class MobileNetTiny3D(nn.Module):
     def __init__(self, num_classes=2):
-       super().__init__()
+        super().__init__()
         
-       self.num_classes = num_classes
+        self.num_classes = num_classes
 
-       # conv3d (ReLU): 224x224x3 -> 112x112x8  
-       self.block1 = nn.Sequential(
-           nn.Conv3d(3, 8, kernel_size=3, stride=2, padding=1),
-           nn.ReLU()
-       )
+        # conv3d (ReLU): 224x224x3 -> 112x112x8  
+        self.block1 = nn.Sequential(
+            nn.Conv3d(3, 8, kernel_size=3, stride=2, padding=1),
+            nn.ReLU()
+        )
        
-       # Bottleneck (2, ReLU): 112x112x8 -> 28x28x8
-       self.block2 = nn.Sequential(
-           Bottleneck3D(8, 8, 8, stride=2, nonlinearity=nn.ReLU()), 
-           Bottleneck3D(8, 8, 8, stride=2, nonlinearity=nn.ReLU())  
-       )
+        # Bottleneck (ReLU): 112x112x8 -> 56x56x16
+        self.block2 = nn.Sequential(
+            Bottleneck3D(8, 16, 16, stride=2, nonlinearity=nn.ReLU())
+        )
 
-       # Bottleneck (2, ReLU): 28x28x8 -> 7x7x16    
-       self.block3 = nn.Sequential(
-           Bottleneck3D(8, 16, 24, stride=2, nonlinearity=nn.ReLU()),
-           Bottleneck3D(16, 16, 24, stride=2, nonlinearity=nn.ReLU())   
-       )
+        # conv3d (ReLU), avg pool 7x7: 56x56x16 -> 1x1x128
+        self.block3 = nn.Sequential(
+            nn.Conv3d(16, 128, kernel_size=1),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool3d(1)
+        )
        
-       # conv3d (ReLU), avg pool 7x7: 7x7x16 -> 1x1x128
-       self.block4 = nn.Sequential(
-           nn.Conv3d(16, 128, kernel_size=1),
-           nn.ReLU(),
-       )
-       
-       # conv3d 1x1, classifier (2, first ReLU): 1x1x128 -> 2
-       self.classifier = nn.Sequential(
-           nn.Conv3d(128, 256, kernel_size=1),
-           nn.ReLU(),
-           nn.Conv3d(256, num_classes, kernel_size=1)
-       )
-
-    def forward(self, x):
-       x = self.block1(x)
-       x = self.block2(x)  
-       x = self.block3(x)
-       x = self.block4(x)
-
-       # Avg pool  
-       T = x.shape[2]
-       x = F.avg_pool3d(x, kernel_size=(T,7,7), stride=1)
-       
-       x = self.classifier(x)
-       x = F.softmax(x, dim=1)
-       x = x.view(x.shape[0], self.num_classes)
-
-       return x
+        # conv3d 1x1, classifier (2, first ReLU): 1x1x128 -> 2
+        self.classifier = nn.Sequential(
+            nn.Conv3d(128, num_classes, kernel_size=1)
+        )
+    def forward (self, x):
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.classifier(x)
+        x = F.softmax(x, dim=1)
+        x = x.view(x.shape[0], self.num_classes)
+        return x
     # Initialize weights 
     def initialize_weights(self):
         for m in self.modules():
