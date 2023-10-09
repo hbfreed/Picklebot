@@ -410,25 +410,17 @@ class MobileNetSmall3D(nn.Module):
 
     def forward(self,x):
         x = self.block1(x)
-        print(x.shape)
         x = self.block2(x)
-        print(x.shape)
         x = self.block3(x)
-        print(x.shape)
         x = self.block4(x)
-        print(x.shape)
         #dynamically get size of T, use for avg pooling
         T = x.shape[2]
         avg_pool_layer = nn.AvgPool3d(kernel_size=(T,7,7),stride=1)
         x = avg_pool_layer(x)
-        print(x.shape)
 
         x = self.classifier(x)
-        print(x.shape)
         x = F.softmax(x,dim=1)
-        print(x.shape)
         x = x.view(x.shape[0], self.num_classes)
-        print(x.shape)
         return x
     def initialize_weights(self):
         for module in self.modules():
