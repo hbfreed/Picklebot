@@ -379,9 +379,9 @@ class MobileNetSmall3D(nn.Module):
 
     #3x3 bottlenecks (3, ReLU, first gets squeeze-excite): 112x112x16 -> 28x28x24
         self.block2 = nn.Sequential(
-            Bottleneck3D(in_channels=16,out_channels=16,expanded_channels=16,stride=2,use_se=True,nonlinearity=nn.ReLU()),
-            Bottleneck3D(in_channels=16,out_channels=24,expanded_channels=72,stride=2,nonlinearity=nn.ReLU()),
-            Bottleneck3D(in_channels=24,out_channels=24,expanded_channels=88,stride=1,nonlinearity=nn.ReLU())
+            Bottleneck3D(in_channels=16,out_channels=16,expanded_channels=16,stride=2,use_se=True,nonlinearity=nn.LeakyReLU()),
+            Bottleneck3D(in_channels=16,out_channels=24,expanded_channels=72,stride=2,nonlinearity=nn.LeakyReLU()),
+            Bottleneck3D(in_channels=24,out_channels=24,expanded_channels=88,stride=1,nonlinearity=nn.LeakyReLU())
             )
     #5x5 bottlenecks (8, h-swish, squeeze-excite): 28x28x24 -> 7x7x96
         self.block3 = nn.Sequential(
@@ -426,7 +426,7 @@ class MobileNetSmall3D(nn.Module):
         for module in self.modules():
             if isinstance(module, nn.Conv3d) or isinstance(module, nn.Linear):
                 if hasattr(module, "nonlinearity"):
-                    if module.nonlinearity == 'relu':
+                    if module.nonlinearity == 'relu' or 'leaky_relu':
                         init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
                     elif module.nonlinearity == 'hardswish':
                         init.xavier_uniform_(module.weight)
@@ -496,8 +496,8 @@ class MobileNetTiny3D(nn.Module):
         for module in self.modules():
             if isinstance(module, nn.Conv3d) or isinstance(module, nn.Linear):
                 if hasattr(module, "nonlinearity"):
-                    if module.nonlinearity == 'relu':
-                        init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+                    if module.nonlinearity == 'relu' or 'leaky_realu':
+                        init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity=module.nonlinearity)
                     elif module.nonlinearity == 'hardswish':
                         init.xavier_uniform_(module.weight)
             elif isinstance(module, nn.BatchNorm3d):
