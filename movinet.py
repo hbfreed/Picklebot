@@ -17,11 +17,11 @@ class MoViNetA2(nn.Module):
         #define our second block, a 3D convolutional layer with 16 filters, kernel size of 3x3x3, stride of 1x2x2, and padding of 1x1x1
         self.block2 = nn.Sequential(
             #1
-            nn.Conv3d(),
-            nn.BatchNorm3d(),
+            nn.Conv3d(in_channels=16, out_channels=40, kernel_size=(1,5,5), stride=(1,2,2), padding=(1,1,1)),
+            nn.BatchNorm3d(in_channels=16),
             nn.Hardswish(),
             #2
-            nn.Conv3d(),
+            nn.Conv3d(in_channels=16),
             nn.BatchNorm3d(),
             nn.Hardswish(),
             #3
@@ -32,7 +32,7 @@ class MoViNetA2(nn.Module):
 
         self.block3 = nn.Sequential(
             #1
-            nn.Conv3d(),
+            nn.Conv3d(in_channels=40,out_channels=96),
             nn.BatchNorm3d(),
             nn.Hardswish(),
             #2
@@ -140,7 +140,7 @@ class MoViNetA2(nn.Module):
         )
 
         self.classifier = nn.Sequential(
-            nn.Linear(, 2048),
+            nn.Linear(640, 2048),
             nn.BatchNorm1d(),
             nn.Hardswish(),
             nn.Linear(2048, self.num_classes)
