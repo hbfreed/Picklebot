@@ -21,7 +21,9 @@ class SEBlock3D(nn.Module):
             )
 
     def forward(self,x):
-        return x * self.se(x)
+        w = self.se(x)
+        x = x * w
+        return x
 
 
 class SEBlock2D(nn.Module):
@@ -37,8 +39,9 @@ class SEBlock2D(nn.Module):
             )
     
     def forward(self,x):
-        return x * self.se(x)
-        
+        w = self.se(x)
+        x = x * w
+        return x
 
 #Bottleneck for Mobilenets
 class Bottleneck3D(nn.Module):
@@ -68,8 +71,9 @@ class Bottleneck3D(nn.Module):
         x = self.pointwise_conv1(x)
         x = self.depthwise_conv(x)
         if self.squeeze_excite is not None:
-            x_se = self.squeeze_excite(x)
-            x = x * x_se #apply the squeeze-excite pointwise
+            x = self.squeeze_excite(x)
+            # x_se = self.squeeze_excite(x)
+            # x = x * x_se #apply the squeeze-excite pointwise
         x = self.pointwise_conv2(x)
         x = self.batchnorm(x)
         x = self.nonlinearity(x) 
@@ -104,8 +108,9 @@ class Bottleneck2D(nn.Module):
         x = self.pointwise_conv1(x)
         x = self.depthwise_conv(x)
         if self.squeeze_excite is not None:
-            x_se = self.squeeze_excite(x)
-            x = x * x_se #apply the squeeze-excite pointwise
+            x = self.squeeze_excite(x)
+            # x_se = self.squeeze_excite(x)
+            # x = x * x_se #apply the squeeze-excite pointwise
         x = self.pointwise_conv2(x)
         x = self.batchnorm(x)
         x = self.nonlinearity(x) 

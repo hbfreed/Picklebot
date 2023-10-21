@@ -2,6 +2,43 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import init
+from mobilenet import SEBlock3D
+
+class MoviNetBottleneck(nn.Module):
+    def __init__(self, in_channels, out_channels, expanded_channels, kernel_size, stride=1, use_se=True,batchnorm=True, nonlinearity=nn.Hardswish):
+        super().__init__()
+
+        self.expand = nn.Conv3d(in_channels, expanded_channels,kernel_size=1)
+
+        self.conv = nn.Conv3d(
+            expanded_channels,
+            expanded_channels,
+            kernel_size=kernel_size
+            stride=stride
+            padding=kernel_size//2
+            groups=expanded_channels
+        )
+
+        self.project = nn.Conv3d(expanded_channels, out_channels,kernel_size=1)
+
+        self.squeeze_excite = SEBlock3D(expanded_channels) if use_se else None
+
+        self.batchnorm = nn.BatchNorm3d(out_channels) if batchnorm else None
+
+        self.nonlinearity = nonlinearity
+
+    def forward(self, x):
+        x = self.expand(x)
+        x = self.conv(x)
+        if self.squeeze_excite is not None:
+            x = self.squeeze_excite(x)
+        x = self.project(x)
+        x = self.batchnorm(x)
+        x = self.nonlinearity(x)
+        
+
+
+
 
 #A2 takes 224x224 resolution video as specified in the paper, it also seems not too computationally expensive
 class MoViNetA2(nn.Module):
