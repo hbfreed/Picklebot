@@ -25,5 +25,5 @@ def video_pipeline(file_root, sequence_length, initial_prefetch_size,mean,std):
     videos, labels = fn.readers.video(device="gpu", file_root=file_root, sequence_length=sequence_length,
                               shard_id=0, num_shards=1, random_shuffle=True, initial_fill=initial_prefetch_size,pad_sequences=True,
                               file_list_include_preceding_frame=False)
-    # videos = fn.normalize(videos,mean=mean,stddev=std)
+    videos = fn.normalize(videos,mean=mean,stddev=std)
     return videos, labels
