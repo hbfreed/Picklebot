@@ -72,8 +72,6 @@ class Bottleneck3D(nn.Module):
         x = self.depthwise_conv(x)
         if self.squeeze_excite is not None:
             x = self.squeeze_excite(x)
-            # x_se = self.squeeze_excite(x)
-            # x = x * x_se #apply the squeeze-excite pointwise
         x = self.pointwise_conv2(x)
         x = self.batchnorm(x)
         x = self.nonlinearity(x) 
@@ -109,8 +107,6 @@ class Bottleneck2D(nn.Module):
         x = self.depthwise_conv(x)
         if self.squeeze_excite is not None:
             x = self.squeeze_excite(x)
-            # x_se = self.squeeze_excite(x)
-            # x = x * x_se #apply the squeeze-excite pointwise
         x = self.pointwise_conv2(x)
         x = self.batchnorm(x)
         x = self.nonlinearity(x) 
@@ -346,7 +342,7 @@ class MobileNetLarge3D(nn.Module):
         x = self.block5(x)
         x = self.block6(x)
         
-        #dynamically get size of T, use for avg pooling
+        #dynamically get the length of the tensor, T, use for pooling
         T = x.shape[2]
         avg_pool_layer = nn.AvgPool3d(kernel_size=(T,7,7),stride=1)
         x = avg_pool_layer(x)
