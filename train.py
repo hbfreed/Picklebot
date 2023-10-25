@@ -41,11 +41,11 @@ test_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/test'
 transform = transforms.Normalize((0.5,), (0.5,))
 
 train_dataset = PicklebotDataset(train_annotations_file,train_video_paths,transform=transform)
-train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count())
+train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count()//2)
 val_dataset = PicklebotDataset(val_annotations_file,val_video_paths,transform=transform)
-val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count())
+val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count()//2)
 test_dataset = PicklebotDataset(test_annotations_file,test_video_paths,transform=transform)
-test_loader = DataLoader(test_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count())
+test_loader = DataLoader(test_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count()//2)
 
 
 #model, optimizer, loss function
