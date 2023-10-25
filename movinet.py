@@ -126,30 +126,20 @@ class MoViNetA2(nn.Module):
             
 
     def forward(self,x):
-        print(f"Input shape before block1: {x.shape}")
         x = self.block1(x)
-        print(f"Input shape after block1: {x.shape}")
         x = self.block2(x)
-        print(f"Input shape after block2: {x.shape}")
         x = self.block3(x)
-        print(f"Input shape after block3: {x.shape}")
         x = self.block4(x)
-        print(f"Input shape after block4: {x.shape}")
         x = self.block5(x)
-        print(f"Input shape after block5: {x.shape}")
         x = self.block6(x)
-        print(f"Input shape after block6: {x.shape}")
         x = self.conv(x)
-        print(f"Input shape after conv: {x.shape}")
 
         #dynamically get the length of the tensor, T, use for pooling
         T = x.shape[2]
         avg_pool_layer = nn.AdaptiveAvgPool3d((T,7,7))
         x = avg_pool_layer(x)
-        print(f"Input shape after pool: {x.shape}")
 
         x = self.classifier(x)
-        print(f"Input shape after classifier: {x.shape}")
         return x
 
     def initialize_weights(self):
