@@ -45,7 +45,7 @@ class SEBlock2D(nn.Module):
 
 #Bottleneck for Mobilenets
 class Bottleneck3D(nn.Module):
-    def __init__(self, in_channels, out_channels, expanded_channels, stride=1, use_se=False, kernel_size=3,nonlinearity=nn.Hardswish(),batchnorm=True):
+    def __init__(self, in_channels, out_channels, expanded_channels, stride=1, use_se=False, kernel_size=3,nonlinearity=nn.Hardswish(),batchnorm=True,dropout=0):
         super().__init__()
 
         #pointwise conv1x1x1 (reduce channels)
@@ -66,6 +66,7 @@ class Bottleneck3D(nn.Module):
         self.pointwise_conv2 = nn.Conv3d(expanded_channels,out_channels,kernel_size=1)
         self.batchnorm = nn.BatchNorm3d(out_channels) if batchnorm else None
         self.nonlinearity = nonlinearity
+        self.dropout = nn.Dropout3d(p=dropout)
 
     def forward(self,x):
         x = self.pointwise_conv1(x)
@@ -74,7 +75,8 @@ class Bottleneck3D(nn.Module):
             x = self.squeeze_excite(x)
         x = self.pointwise_conv2(x)
         x = self.batchnorm(x)
-        x = self.nonlinearity(x) 
+        x = self.nonlinearity(x)
+        x = self.dropout(x)
         return x
 
 
@@ -380,20 +382,20 @@ class MobileNetSmall3D(nn.Module):
 
     #3x3 bottlenecks (3, ReLU, first gets squeeze-excite): 112x112x16 -> 28x28x24
         self.block2 = nn.Sequential(
-            Bottleneck3D(in_channels=16,out_channels=16,expanded_channels=16,stride=2,use_se=True,nonlinearity=nn.LeakyReLU()),
-            Bottleneck3D(in_channels=16,out_channels=24,expanded_channels=72,stride=2,nonlinearity=nn.LeakyReLU()),
-            Bottleneck3D(in_channels=24,out_channels=24,expanded_channels=88,stride=1,nonlinearity=nn.LeakyReLU())
+            Bottleneck3D(in_channels=16,out_channels=16,expanded_channels=16,stride=2,use_se=True,nonlinearity=nn.LeakyReLU(),dropout=0.2),
+            Bottleneck3D(in_channels=16,out_channels=24,expanded_channels=72,stride=2,nonlinearity=nn.LeakyReLU(),dropout=0.2),
+            Bottleneck3D(in_channels=24,out_channels=24,expanded_channels=88,stride=1,nonlinearity=nn.LeakyReLU(),dropout=0.2)
             )
     #5x5 bottlenecks (8, h-swish, squeeze-excite): 28x28x24 -> 7x7x96
         self.block3 = nn.Sequential(
-            Bottleneck3D(in_channels=24,out_channels=40,expanded_channels=96,stride=2,use_se=True,kernel_size=5),
-            Bottleneck3D(in_channels=40,out_channels=40,expanded_channels=240,stride=1,use_se=True,kernel_size=5),
-            Bottleneck3D(in_channels=40,out_channels=40,expanded_channels=240,stride=1,use_se=True,kernel_size=5), 
-            Bottleneck3D(in_channels=40,out_channels=48,expanded_channels=120,stride=1,use_se=True,kernel_size=5),
-            Bottleneck3D(in_channels=48,out_channels=48,expanded_channels=144,stride=1,use_se=True,kernel_size=5),
-            Bottleneck3D(in_channels=48,out_channels=96,expanded_channels=288,stride=2,use_se=True,kernel_size=5),
-            Bottleneck3D(in_channels=96,out_channels=96,expanded_channels=576,stride=1,use_se=True,kernel_size=5),
-            Bottleneck3D(in_channels=96,out_channels=96,expanded_channels=576,stride=1,use_se=True,kernel_size=5)
+            Bottleneck3D(in_channels=24,out_channels=40,expanded_channels=96,stride=2,use_se=True,kernel_size=5,dropout=0.2),
+            Bottleneck3D(in_channels=40,out_channels=40,expanded_channels=240,stride=1,use_se=True,kernel_size=5,dropout=0.2),
+            Bottleneck3D(in_channels=40,out_channels=40,expanded_channels=240,stride=1,use_se=True,kernel_size=5,dropout=0.2), 
+            Bottleneck3D(in_channels=40,out_channels=48,expanded_channels=120,stride=1,use_se=True,kernel_size=5,dropout=0.2),
+            Bottleneck3D(in_channels=48,out_channels=48,expanded_channels=144,stride=1,use_se=True,kernel_size=5,dropout=0.2),
+            Bottleneck3D(in_channels=48,out_channels=96,expanded_channels=288,stride=2,use_se=True,kernel_size=5,dropout=0.2),
+            Bottleneck3D(in_channels=96,out_channels=96,expanded_channels=576,stride=1,use_se=True,kernel_size=5,dropout=0.2),
+            Bottleneck3D(in_channels=96,out_channels=96,expanded_channels=576,stride=1,use_se=True,kernel_size=5,dropout=0.2)
             )
     #conv3d (h-swish), avg pool 7x7: 7x7x96 -> 1x1x576
         self.block4 = nn.Sequential(
@@ -423,6 +425,8 @@ class MobileNetSmall3D(nn.Module):
         x = F.softmax(x,dim=1)
         x = x.view(x.shape[0], self.num_classes)
         return x
+    
+
     def initialize_weights(self):
         for module in self.modules():
             if isinstance(module, nn.Conv3d) or isinstance(module, nn.Linear):
