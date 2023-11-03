@@ -3,10 +3,10 @@ from torch.nn import init
 from mobilenet import SEBlock3D
 
 class MoviNetBottleneck(nn.Module):
-    def __init__(self, in_channels, out_channels, expanded_channels, kernel_size,stride=1, use_se=True,batchnorm=True, nonlinearity=nn.Hardswish()):
+    def __init__(self, in_channels, out_channels, expanded_channels, kernel_size,stride=1, use_se=True,batchnorm=True, nonlinearity=nn.Hardswish(),bias=False):
         super().__init__()
 
-        self.expand = nn.Conv3d(in_channels, expanded_channels,kernel_size=1)
+        self.expand = nn.Conv3d(in_channels, expanded_channels,kernel_size=1,bias=bias)
 
         self.conv = nn.Conv3d(
             expanded_channels,
@@ -14,11 +14,12 @@ class MoviNetBottleneck(nn.Module):
             kernel_size=kernel_size,
             stride=stride,
             padding=(kernel_size[0]-1,kernel_size[1]//2,kernel_size[2]//2) if isinstance(kernel_size, tuple) else kernel_size//2,
-            groups=expanded_channels
+            groups=expanded_channels,
+            bias=bias
         )
         
         self.squeeze_excite = SEBlock3D(expanded_channels) if use_se else None
-        self.project = nn.Conv3d(expanded_channels, out_channels,kernel_size=1)
+        self.project = nn.Conv3d(expanded_channels, out_channels,kernel_size=1,bias=bias)
         self.batchnorm = nn.BatchNorm3d(out_channels) if batchnorm else None
         self.nonlinearity = nonlinearity
 
@@ -43,7 +44,11 @@ class MoViNetA2(nn.Module):
         self.num_classes = num_classes
 
         #define our first block, a 3D convolutional layer with 16 filters, kernel size of 1x3x3, stride of 1x2x2, and padding of 0x1x1  
-        self.block1 = nn.Conv3d(in_channels=3, out_channels=16, kernel_size=(1,3,3), stride=(1,2,2), padding=(0,1,1))
+        self.block1 = nn.Sequential(
+            nn.Conv3d(in_channels=3, out_channels=16, kernel_size=(1,3,3), stride=(1,2,2), padding=(0,1,1),bias=False),
+            nn.BatchNorm3d(16),
+            nn.Hardswish()
+        )
 
         #define our second block, a 3D convolutional layer with 16 filters, kernel size of 3x3x3, stride of 1x2x2, and padding of 1x1x1
         self.block2 = nn.Sequential(
@@ -112,7 +117,7 @@ class MoViNetA2(nn.Module):
         )
 
         self.conv = nn.Sequential(
-            nn.Conv3d(in_channels=640,out_channels=640,kernel_size=1),
+            nn.Conv3d(in_channels=640,out_channels=640,kernel_size=1,bias=False),
             nn.BatchNorm3d(640),
             nn.Hardswish(),
         )

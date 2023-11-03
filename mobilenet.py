@@ -103,7 +103,7 @@ class Bottleneck2D(nn.Module):
         #squeeze-and-excite (recalibrate channel wise)
         self.squeeze_excite = SEBlock2D(expanded_channels) if use_se else None 
         #pointwise conv1x1x1 (expansion to increase channels)
-        self.pointwise_conv2 = nn.Conv2d(expanded_channels,out_channels,kernel_size=1)
+        self.pointwise_conv2 = nn.Conv2d(expanded_channels,out_channels,kernel_size=1,bias=bias)
         self.batchnorm = nn.BatchNorm2d(out_channels) if batchnorm else None
         self.nonlinearity = nonlinearity
 
@@ -436,76 +436,6 @@ class MobileNetSmall3D(nn.Module):
                 if hasattr(module, "nonlinearity"):
                     if module.nonlinearity == 'relu' or 'leaky_relu':
                         init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
-                    elif module.nonlinearity == 'hardswish':
-                        init.xavier_uniform_(module.weight)
-            elif isinstance(module, nn.BatchNorm3d):
-                init.constant_(module.weight, 1)
-                init.constant_(module.bias, 0)
-
-
-class MobileNetTiny3D(nn.Module):
-    def __init__(self,num_classes=2):
-        super().__init__()
-
-        self.num_classes = num_classes
-
-        self.block1 = nn.Sequential(
-            nn.Conv3d(in_channels=3,out_channels=8,kernel_size=3,stride=2,padding=1),
-            nn.BatchNorm3d(8),
-            nn.Hardswish()
-            )
-
-        self.block2 = nn.Sequential(
-            Bottleneck3D(in_channels=8,out_channels=8,expanded_channels=8,stride=2,use_se=True,nonlinearity=nn.ReLU()),
-            Bottleneck3D(in_channels=8,out_channels=12,expanded_channels=36,stride=2,nonlinearity=nn.ReLU()),
-            Bottleneck3D(in_channels=12,out_channels=12,expanded_channels=44,stride=1,nonlinearity=nn.ReLU())
-            )
-
-        self.block3 = nn.Sequential(
-            Bottleneck3D(in_channels=12,out_channels=20,expanded_channels=48,stride=2,use_se=True,kernel_size=5),
-            Bottleneck3D(in_channels=20,out_channels=20,expanded_channels=120,stride=1,use_se=True,kernel_size=5),
-            Bottleneck3D(in_channels=20,out_channels=20,expanded_channels=120,stride=1,use_se=True,kernel_size=5),
-            Bottleneck3D(in_channels=20,out_channels=24,expanded_channels=60,stride=1,use_se=True,kernel_size=5),
-            Bottleneck3D(in_channels=24,out_channels=24,expanded_channels=72,stride=1,use_se=True,kernel_size=5),
-            Bottleneck3D(in_channels=24,out_channels=48,expanded_channels=144,stride=2,use_se=True,kernel_size=5),
-            Bottleneck3D(in_channels=48,out_channels=48,expanded_channels=288,stride=1,use_se=True,kernel_size=5),
-            Bottleneck3D(in_channels=48,out_channels=48,expanded_channels=288,stride=1,use_se=True,kernel_size=5)
-            )
-
-        self.block4 = nn.Sequential(
-            nn.Conv3d(in_channels=48,out_channels=288,kernel_size=1,stride=1,padding=0),
-            SEBlock3D(channels=288),
-            nn.BatchNorm3d(288),
-            nn.Hardswish()
-            )
-
-        self.classifier = nn.Sequential(
-            nn.Conv3d(in_channels=288,out_channels=512,kernel_size=1,stride=1,padding=0),
-            nn.Hardswish(),
-            nn.Conv3d(in_channels=512,out_channels=self.num_classes,kernel_size=1,stride=1,padding=0),
-            )
-    
-    def forward(self,x):
-        x = self.block1(x)
-        x = self.block2(x)
-        x = self.block3(x)
-        #dynamically get size of T, use for avg pooling
-        T = x.shape[2]
-        avg_pool_layer = nn.AvgPool3d(kernel_size=(T,7,7),stride=1)
-        x = avg_pool_layer(x)
-
-        x = self.block4(x)
-        x = self.classifier(x)
-        x = F.softmax(x,dim=1)
-        x = x.view(x.shape[0], self.num_classes)
-        return x
-    
-    def initialize_weights(self):
-        for module in self.modules():
-            if isinstance(module, nn.Conv3d) or isinstance(module, nn.Linear):
-                if hasattr(module, "nonlinearity"):
-                    if module.nonlinearity == 'relu' or 'leaky_realu':
-                        init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity=module.nonlinearity)
                     elif module.nonlinearity == 'hardswish':
                         init.xavier_uniform_(module.weight)
             elif isinstance(module, nn.BatchNorm3d):
