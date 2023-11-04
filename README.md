@@ -13,6 +13,6 @@ So far, MobileNetV3-Small modified with 3D convolutions has produced 80% accurac
 </p>
 
 ### MobileNet Large
-***Currently Training MobileNetV3-Large...***
 
 ### MoViNet A2
+***Currently Training MoViNet A2...***
