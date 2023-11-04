@@ -9,6 +9,7 @@ We present Picklebot, an automated umpire to call balls and strikes in baseball 
 ### MobileNet Small
 So far, MobileNetV3-Small modified with 3D convolutions has produced 80% accuracy on the test set (see cloud_train.ipynb).
 
-![Loss Plot](https://github.com/hbfreed/Picklebot/blob/main/plots/mobilenet_small_loss.png)
-
-![Accuracy Plot](https://github.com/hbfreed/Picklebot/blob/main/plots/mobilenet_small_accuracy.png)
+<p float="left">
+  <img src="https://github.com/hbfreed/Picklebot/raw/main/plots/mobilenet_small_loss.png" alt="Loss Plot" width="400" />
+  <img src="https://github.com/hbfreed/Picklebot/raw/main/plots/mobilenet_small_accuracy.png" alt="Accuracy Plot" width="400" />
+</p>
