@@ -1,4 +1,4 @@
-Architecture,Loss,Accuracy
-MobileNet Small,0.5057835186864149,0.8000742528308892 
-MobileNet Large, ,
-MoViNet A2, , 
+Architecture,Loss,Accuracy,Number of Parameters
+MobileNet Small,0.5057835186864149,0.8000742528308892,1672816
+MobileNet Large, ,4191584
+MoViNet A2, , 4660762
