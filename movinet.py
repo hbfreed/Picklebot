@@ -1,6 +1,6 @@
 import torch.nn as nn
 from torch.nn import init
-from mobilenet import SEBlock3D
+from Picklebot.mobilenet import SEBlock3D
 
 class MoviNetBottleneck(nn.Module):
     def __init__(self, in_channels, out_channels, expanded_channels, kernel_size,stride=1, use_se=True,batchnorm=True, nonlinearity=nn.Hardswish(),bias=False):
@@ -139,12 +139,11 @@ class MoViNetA2(nn.Module):
         x = self.block6(x)
         x = self.conv(x)
 
-        #dynamically get the length of the tensor, T, use for pooling
-        T = x.shape[2]
-        avg_pool_layer = nn.AdaptiveAvgPool3d((T,7,7))
-        x = avg_pool_layer(x)
-
-        x = self.classifier(x)
+        # #dynamically get the length of the tensor, T, use for pooling
+        # T = x.shape[2]
+        # avg_pool_layer = nn.AdaptiveAvgPool3d((T,7,7))
+        # x = avg_pool_layer(x)
+        # x = self.classifier(x)
         return x
 
     def initialize_weights(self):
