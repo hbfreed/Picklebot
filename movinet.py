@@ -1,6 +1,6 @@
 import torch.nn as nn
 from torch.nn import init
-from Picklebot.mobilenet import SEBlock3D
+from mobilenet import SEBlock3D
 
 class MoviNetBottleneck(nn.Module):
     def __init__(self, in_channels, out_channels, expanded_channels, kernel_size,stride=1, use_se=True,batchnorm=True, nonlinearity=nn.Hardswish(),bias=False):
