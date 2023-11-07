@@ -327,7 +327,7 @@ class MobileNetLarge3D(nn.Module):
         
     #conv3d (h-swish), avg pool 7x7: 7x7x960 -> 1x1x960
         self.block6 = nn.Sequential(
-            nn.Conv3d(in_channels=160,out_channels=960,stride=1,kernel_size=1,dropout=0.2),
+            nn.Conv3d(in_channels=160,out_channels=960,stride=1,kernel_size=1),
             nn.BatchNorm3d(960),
             nn.Hardswish()
             )
