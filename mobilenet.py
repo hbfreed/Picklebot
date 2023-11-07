@@ -296,38 +296,38 @@ class MobileNetLarge3D(nn.Module):
         
     #3x3 bottlenecks1 (3, ReLU): 112x112x16 -> 56x56x24
         self.block2 = nn.Sequential(
-            Bottleneck3D(in_channels=16,out_channels=16,expanded_channels=16,stride=1,nonlinearity=nn.ReLU()),
-            Bottleneck3D(in_channels=16,out_channels=24,expanded_channels=64,stride=2,nonlinearity=nn.ReLU()),
-            Bottleneck3D(in_channels=24,out_channels=24,expanded_channels=72,stride=1,nonlinearity=nn.ReLU())
+            Bottleneck3D(in_channels=16,out_channels=16,expanded_channels=16,stride=1,nonlinearity=nn.ReLU(),dropout=0.2),
+            Bottleneck3D(in_channels=16,out_channels=24,expanded_channels=64,stride=2,nonlinearity=nn.ReLU(),dropout=0.2),
+            Bottleneck3D(in_channels=24,out_channels=24,expanded_channels=72,stride=1,nonlinearity=nn.ReLU(),dropout=0.2)
             )
         
     #5x5 bottlenecks1 (3, ReLU, squeeze-excite): 56x56x24 -> 28x28x40
         self.block3 = nn.Sequential(
-            Bottleneck3D(in_channels=24,out_channels=40,expanded_channels=72,stride=2,use_se=True,kernel_size=5,nonlinearity=nn.ReLU()),
-            Bottleneck3D(in_channels=40,out_channels=40,expanded_channels=120,stride=1,use_se=True,kernel_size=5,nonlinearity=nn.ReLU()),
-            Bottleneck3D(in_channels=40,out_channels=40,expanded_channels=120,stride=1,use_se=True,kernel_size=5,nonlinearity=nn.ReLU())
+            Bottleneck3D(in_channels=24,out_channels=40,expanded_channels=72,stride=2,use_se=True,kernel_size=5,nonlinearity=nn.ReLU(),dropout=0.2),
+            Bottleneck3D(in_channels=40,out_channels=40,expanded_channels=120,stride=1,use_se=True,kernel_size=5,nonlinearity=nn.ReLU(),dropout=0.2),
+            Bottleneck3D(in_channels=40,out_channels=40,expanded_channels=120,stride=1,use_se=True,kernel_size=5,nonlinearity=nn.ReLU(),dropout=0.2)
             )
         
     #3x3 bottlenecks2 (6, h-swish, last two get squeeze-excite): 28x28x40 -> 14x14x112
         self.block4 = nn.Sequential(
-            Bottleneck3D(in_channels=40,out_channels=80,expanded_channels=240,stride=2),
-            Bottleneck3D(in_channels=80,out_channels=80,expanded_channels=240,stride=1),
-            Bottleneck3D(in_channels=80,out_channels=80,expanded_channels=184,stride=1),
-            Bottleneck3D(in_channels=80,out_channels=80,expanded_channels=184,stride=1),
-            Bottleneck3D(in_channels=80,out_channels=112,expanded_channels=480,stride=1,use_se=True),
-            Bottleneck3D(in_channels=112,out_channels=112,expanded_channels=672,stride=1,use_se=True)
+            Bottleneck3D(in_channels=40,out_channels=80,expanded_channels=240,stride=2,dropout=0.2),
+            Bottleneck3D(in_channels=80,out_channels=80,expanded_channels=240,stride=1,dropout=0.2),
+            Bottleneck3D(in_channels=80,out_channels=80,expanded_channels=184,stride=1,dropout=0.2),
+            Bottleneck3D(in_channels=80,out_channels=80,expanded_channels=184,stride=1,dropout=0.2),
+            Bottleneck3D(in_channels=80,out_channels=112,expanded_channels=480,stride=1,use_se=True,dropout=0.2),
+            Bottleneck3D(in_channels=112,out_channels=112,expanded_channels=672,stride=1,use_se=True,dropout=0.2)
             )
         
     #5x5 bottlenecks2 (3, h-swish, squeeze-excite): 14x14x112 -> 7x7x160
         self.block5 = nn.Sequential(
-            Bottleneck3D(in_channels=112,out_channels=160,expanded_channels=672,stride=2,use_se=True,kernel_size=5),
-            Bottleneck3D(in_channels=160,out_channels=160,expanded_channels=960,stride=1,use_se=True,kernel_size=5),
-            Bottleneck3D(in_channels=160,out_channels=160,expanded_channels=960,stride=1,use_se=True,kernel_size=5)
+            Bottleneck3D(in_channels=112,out_channels=160,expanded_channels=672,stride=2,use_se=True,kernel_size=5,dropout=0.2),
+            Bottleneck3D(in_channels=160,out_channels=160,expanded_channels=960,stride=1,use_se=True,kernel_size=5,dropout=0.2),
+            Bottleneck3D(in_channels=160,out_channels=160,expanded_channels=960,stride=1,use_se=True,kernel_size=5,dropout=0.2)
             )
         
     #conv3d (h-swish), avg pool 7x7: 7x7x960 -> 1x1x960
         self.block6 = nn.Sequential(
-            nn.Conv3d(in_channels=160,out_channels=960,stride=1,kernel_size=1),
+            nn.Conv3d(in_channels=160,out_channels=960,stride=1,kernel_size=1,dropout=0.2),
             nn.BatchNorm3d(960),
             nn.Hardswish()
             )
