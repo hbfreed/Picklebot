@@ -138,21 +138,13 @@ class MoViNetA2(nn.Module):
 
     def forward(self,x):
         x = self.block1(x)
-        print(f"1: {x.shape}")
         x = self.block2(x)
-        print(f"2: {x.shape}")
         x = self.block3(x)
-        print(f"3: {x.shape}")
         x = self.block4(x)
-        print(f"4: {x.shape}")
         x = self.block5(x)
-        print(f"5: {x.shape}")
         x = self.block6(x)
-        print(f"6: {x.shape}")
         x = self.conv(x)
-        print(f"conv: {x.shape}")
         x = self.classifier(x)
-        print(f"class: {x.shape}")
         return x
 
     def initialize_weights(self):
