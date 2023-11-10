@@ -334,6 +334,7 @@ class MobileNetLarge3D(nn.Module):
         
     #classifier: conv3d 1x1 NBN (2, first uses h-swish): 1x1x960 
         self.classifier = nn.Sequential(
+            nn.AdaptiveAvgPool3d(1,1,1),
             nn.Conv3d(in_channels=960,out_channels=1280,kernel_size=1,stride=1,padding=0), #2 classes for ball/strike
             nn.Hardswish(),
             nn.Conv3d(in_channels=1280,out_channels=self.num_classes,kernel_size=1,stride=1,padding=0)
@@ -346,12 +347,6 @@ class MobileNetLarge3D(nn.Module):
         x = self.block4(x)
         x = self.block5(x)
         x = self.block6(x)
-        
-        #dynamically get the length of the tensor, T, use for pooling
-        T = x.shape[2]
-        avg_pool_layer = nn.AvgPool3d(kernel_size=(T,7,7),stride=1)
-        x = avg_pool_layer(x)
-
         x = self.classifier(x)
         x = F.softmax(x,dim=1)
         x = x.view(x.shape[0], self.num_classes)
@@ -409,6 +404,7 @@ class MobileNetSmall3D(nn.Module):
             )
     #conv3d 1x1, NBN, (2, first uses h-swish): 1x1x576
         self.classifier = nn.Sequential(
+            nn.AdaptiveAvgPool3d(1,1,1),
             nn.Conv3d(in_channels=576,out_channels=1024,kernel_size=1,stride=1,padding=0),
             nn.Hardswish(),
             nn.Conv3d(in_channels=1024,out_channels=self.num_classes,kernel_size=1,stride=1,padding=0),
@@ -419,11 +415,6 @@ class MobileNetSmall3D(nn.Module):
         x = self.block2(x)
         x = self.block3(x)
         x = self.block4(x)
-        #dynamically get size of T, use for avg pooling
-        T = x.shape[2]
-        avg_pool_layer = nn.AvgPool3d(kernel_size=(T,7,7),stride=1)
-        x = avg_pool_layer(x)
-
         x = self.classifier(x)
         x = F.softmax(x,dim=1)
         x = x.view(x.shape[0], self.num_classes)
