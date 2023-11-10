@@ -3,7 +3,7 @@ from torch.nn import init
 from mobilenet import SEBlock3D
 
 class MoviNetBottleneck(nn.Module):
-    def __init__(self, in_channels, out_channels, expanded_channels, kernel_size,stride=1, use_se=True,batchnorm=True, nonlinearity=nn.Hardswish(),bias=False,padding_size=None):
+    def __init__(self, in_channels, out_channels, expanded_channels, kernel_size,stride=1, use_se=True,batchnorm=True, nonlinearity=nn.Hardswish(),bias=False,dropout=0,padding_size=None):
         super().__init__()
 
         self.expand = nn.Conv3d(in_channels, expanded_channels,kernel_size=1,bias=bias)
@@ -25,6 +25,7 @@ class MoviNetBottleneck(nn.Module):
         self.project = nn.Conv3d(expanded_channels, out_channels,kernel_size=1,bias=bias)
         self.batchnorm = nn.BatchNorm3d(out_channels) if batchnorm else None
         self.nonlinearity = nonlinearity
+        self.dropout = nn.Dropout3d(p=dropout)
 
     def forward(self, x):
         x = self.expand(x)
@@ -60,77 +61,80 @@ class MoViNetA2(nn.Module):
             #2
             MoviNetBottleneck(in_channels=16, out_channels=16, expanded_channels=40, kernel_size=3),
             #3
-            MoviNetBottleneck(in_channels=16, out_channels=40, expanded_channels=96,kernel_size=3)
+            MoviNetBottleneck(in_channels=16, out_channels=40, expanded_channels=96,kernel_size=3,dropout=0.2)
         )
 
         self.block3 = nn.Sequential(
             #1
             MoviNetBottleneck(in_channels=40,out_channels=40,expanded_channels=96,kernel_size=3,stride=(1,2,2)),
             #2
-            MoviNetBottleneck(in_channels=40,out_channels=40,expanded_channels=120,kernel_size=3),
+            MoviNetBottleneck(in_channels=40,out_channels=40,expanded_channels=120,kernel_size=3,dropout=0.2),
             #3
             MoviNetBottleneck(in_channels=40,out_channels=40,expanded_channels=96,kernel_size=3),
             #4
-            MoviNetBottleneck(in_channels=40,out_channels=40,expanded_channels=96,kernel_size=3),
+            MoviNetBottleneck(in_channels=40,out_channels=40,expanded_channels=96,kernel_size=3,dropout=0.2),
             #5
             MoviNetBottleneck(in_channels=40,out_channels=72,expanded_channels=120,kernel_size=3)
         )
         self.block4 = nn.Sequential(
             #1
-            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=(5,3,3),stride=(1,2,2),padding_size=(2,1,1)),
+            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=(5,3,3),stride=(1,2,2),padding_size=(2,1,1),dropout=0.2),
             #2
             MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=155,kernel_size=3),
             #3
-            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=3),
+            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=3,dropout=0.2),
             #4
             MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=192,kernel_size=3),
             #5
-            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=3)
+            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=3,dropout=0.2)
         )
         self.block5 = nn.Sequential(
             #1
-            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=(5,3,3),padding_size=(2,1,1)),
+            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=(5,3,3),padding_size=(2,1,1),dropout=0.2),
             #2
             MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=3),
             #3
-            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=3),
+            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=3,dropout=0.2),
             #4
             MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=3),
             #5
             MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=144,kernel_size=(1,5,5)),
             #6
-            MoviNetBottleneck(in_channels=72,out_channels=144,expanded_channels=240,kernel_size=3)
+            MoviNetBottleneck(in_channels=72,out_channels=144,expanded_channels=240,kernel_size=3,dropout=0.2)
         )
         
         self.block6 = nn.Sequential(
             #1
-            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=480,kernel_size=(5,3,3),stride=(1,2,2),padding_size=(2,1,1)),
+            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=480,kernel_size=(5,3,3),stride=(1,2,2),padding_size=(2,1,1),dropout=0.2),
             #2
             MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=384,kernel_size=(1,5,5)),
             #3
-            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=384,kernel_size=(1,5,5)),
+            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=384,kernel_size=(1,5,5),dropout=0.2),
             #4
             MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=480,kernel_size=(1,5,5)),
             #5
-            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=480,kernel_size=(1,5,5)),
+            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=480,kernel_size=(1,5,5),dropout=0.2),
             #6
             MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=480,kernel_size=3),
             #7
-            MoviNetBottleneck(in_channels=144,out_channels=640,expanded_channels=576,kernel_size=(1,3,3))
+            MoviNetBottleneck(in_channels=144,out_channels=640,expanded_channels=576,kernel_size=(1,3,3),dropout=0.2)
         )
 
         self.conv = nn.Sequential(
             nn.Conv3d(in_channels=640,out_channels=640,kernel_size=1,bias=False),
             nn.BatchNorm3d(640),
             nn.Hardswish(),
+            nn.Dropout3d(0.2)
         )
 
         self.classifier = nn.Sequential(
             nn.AdaptiveAvgPool3d((1,1,1)),
+            nn.Dropout3d(0.2),
             nn.Flatten(),
             nn.Linear(640, 2048),
             nn.BatchNorm1d(2048),
             nn.Hardswish(),
+            nn.Dropout(0.2),
             nn.Linear(2048, self.num_classes),
             nn.Softmax(dim=1)
         )
