@@ -135,8 +135,7 @@ class MoViNetA2(nn.Module):
             nn.BatchNorm1d(2048),
             nn.Hardswish(),
             nn.Dropout(0.2),
-            nn.Linear(2048, self.num_classes),
-            nn.Softmax(dim=1)
+            nn.Linear(2048, self.num_classes)
         )
             
 

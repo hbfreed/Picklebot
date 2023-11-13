@@ -185,7 +185,6 @@ class MobileNetLarge3D(nn.Module):
         x = self.block5(x)
         x = self.block6(x)
         x = self.classifier(x)
-        x = F.softmax(x,dim=1)
         x = x.view(x.shape[0], self.num_classes)
         return x
 
@@ -253,7 +252,6 @@ class MobileNetSmall3D(nn.Module):
         x = self.block3(x)
         x = self.block4(x)
         x = self.classifier(x)
-        x = F.softmax(x,dim=1)
         x = x.view(x.shape[0], self.num_classes)
         return x
     
@@ -355,7 +353,6 @@ class MobileNetLarge2D(nn.Module):
         x, _ = self.lstm(x)
         x = x[:,-1,:]
         x = self.classifier(x)
-        x = F.softmax(x,dim=1).to(torch.float16)
         return x
 
 
@@ -419,7 +416,6 @@ class MobileNetSmall2D(nn.Module):
         x, _ = self.lstm(x)
         x = x[:,-1,:]
         x = self.classifier(x)
-        x = F.softmax(x,dim=1).to(torch.float16)
         return x
     
     def initialize_weights(self):
