@@ -87,7 +87,7 @@ class Bottleneck2D(nn.Module):
         super().__init__()
 
         #pointwise conv1x1x1 (reduce channels)
-        self.pointwise_conv1 = nn.Conv2d(in_channels,expanded_channels,kernel_size=1,dropout=dropout,bias=bias)
+        self.pointwise_conv1 = nn.Conv2d(in_channels,expanded_channels,kernel_size=1,bias=bias)
         #depthwise (spatial filtering)
         #groups to preserve channel-wise information
         self.depthwise_conv = nn.Conv2d(
@@ -97,7 +97,6 @@ class Bottleneck2D(nn.Module):
             kernel_size=kernel_size,
             stride=stride,
             padding=kernel_size//2,
-            dropout=dropout,
             bias=bias
             )
         #squeeze-and-excite (recalibrate channel wise)
@@ -106,6 +105,7 @@ class Bottleneck2D(nn.Module):
         self.pointwise_conv2 = nn.Conv2d(expanded_channels,out_channels,kernel_size=1,bias=bias)
         self.batchnorm = nn.BatchNorm2d(out_channels) if batchnorm else None
         self.nonlinearity = nonlinearity
+        self.dropout = nn.Dropout2d(p=dropout)
 
     def forward(self,x):
         x = self.pointwise_conv1(x)
@@ -299,24 +299,24 @@ class MobileNetLarge2D(nn.Module):
             )
     #3x3 bottlenecks1 (3, ReLU): 112x112x16 -> 56x56x24
         self.block2 = nn.Sequential(
-            Bottleneck2D(in_channels=16,out_channels=16,expanded_channels=16,stride=1,nonlinearity=nn.ReLU()),
+            Bottleneck2D(in_channels=16,out_channels=16,expanded_channels=16,stride=1,nonlinearity=nn.ReLU(),dropout=0.2),
             Bottleneck2D(in_channels=16,out_channels=24,expanded_channels=64,stride=2,nonlinearity=nn.ReLU()),
-            Bottleneck2D(in_channels=24,out_channels=24,expanded_channels=72,stride=1,nonlinearity=nn.ReLU())
+            Bottleneck2D(in_channels=24,out_channels=24,expanded_channels=72,stride=1,nonlinearity=nn.ReLU(),dropout=0.2)
             )
     #5x5 bottlenecks1 (3, ReLU, squeeze-excite): 56x56x24 -> 28x28x40
         self.block3 = nn.Sequential(
-            Bottleneck2D(in_channels=24,out_channels=40,expanded_channels=72,stride=2,use_se=True,kernel_size=5,nonlinearity=nn.ReLU()),
+            Bottleneck2D(in_channels=24,out_channels=40,expanded_channels=72,stride=2,use_se=True,kernel_size=5,nonlinearity=nn.ReLU(),dropout=0.2),
             Bottleneck2D(in_channels=40,out_channels=40,expanded_channels=120,stride=1,use_se=True,kernel_size=5,nonlinearity=nn.ReLU()),
-            Bottleneck2D(in_channels=40,out_channels=40,expanded_channels=120,stride=1,use_se=True,kernel_size=5,nonlinearity=nn.ReLU())
+            Bottleneck2D(in_channels=40,out_channels=40,expanded_channels=120,stride=1,use_se=True,kernel_size=5,nonlinearity=nn.ReLU(),dropout=0.2)
             )
     #3x3 bottlenecks2 (6, h-swish, last two get squeeze-excite): 28x28x40 -> 14x14x112
         self.block4 = nn.Sequential(
-            Bottleneck2D(in_channels=40,out_channels=80,expanded_channels=240,stride=2),
+            Bottleneck2D(in_channels=40,out_channels=80,expanded_channels=240,stride=2,dropout=0.2),
             Bottleneck2D(in_channels=80,out_channels=80,expanded_channels=240,stride=1),
+            Bottleneck2D(in_channels=80,out_channels=80,expanded_channels=184,stride=1,dropout=0.2),
             Bottleneck2D(in_channels=80,out_channels=80,expanded_channels=184,stride=1),
-            Bottleneck2D(in_channels=80,out_channels=80,expanded_channels=184,stride=1),
-            Bottleneck2D(in_channels=80,out_channels=112,expanded_channels=480,stride=1,use_se=True),
-            Bottleneck2D(in_channels=112,out_channels=112,expanded_channels=672,stride=1,use_se=True)
+            Bottleneck2D(in_channels=80,out_channels=112,expanded_channels=480,stride=1,use_se=True,dropout=0.2),
+            Bottleneck2D(in_channels=112,out_channels=112,expanded_channels=672,stride=1,use_se=True,dropout=0.2)
             )
     #5x5 bottlenecks2 (3, h-swish, squeeze-excite): 14x14x112 -> 7x7x160
         self.block5 = nn.Sequential(
@@ -339,19 +339,27 @@ class MobileNetLarge2D(nn.Module):
             )
 
     def forward(self,x):
-        #reshape from N,C,T,H,W to N*T,C,H,W for 2d convolutions, we will keep N as 1
-        x = x.reshape(x.shape[0]*x.shape[2],x.shape[1],x.shape[3],x.shape[4])
-        x = self.block1(x)
-        x = self.block2(x)
-        x = self.block3(x)
-        x = self.block4(x)
-        x = self.block5(x)
-        x = self.block6(x)
-        #reshape for LSTM
-        x = x.permute(0,2,1,3).contiguous()
-        x = x.view(x.shape[0],x.shape[1],x.shape[2])
+        #x is shape (batch_size, timesteps, C, H, W)
+        batch_size,timesteps,C,H,W = x.size()
+        cnn_out = torch.zeros(batch_size,timesteps,960).to(x.device) #assuming the output of block6 is 960
+        #we're looping through the frames in the video
+        for i in range(timesteps):
+            # Select the frame at the ith position
+            frame = x[:, i, :, :, :]
+            frame = self.block1(frame)
+            frame = self.block2(frame)
+            frame = self.block3(frame)
+            frame = self.block4(frame)
+            frame = self.block5(frame)
+            frame = self.block6(frame)
+            # Flatten the frame (minus the batch dimension)
+            frame = frame.view(frame.size(0), -1)
+            cnn_out[:, i, :] = frame
+        # reshape for LSTM
+        x = cnn_out
         x, _ = self.lstm(x)
-        x = x[:,-1,:]
+        # get the output from the last timestep only
+        x = x[:, -1, :]
         x = self.classifier(x)
         return x
 
@@ -373,20 +381,20 @@ class MobileNetSmall2D(nn.Module):
             )
     #3x3 bottlenecks (3, ReLU, first gets squeeze-excite): 112x112x16 -> 28x28x24
         self.block2 = nn.Sequential(
-            Bottleneck2D(in_channels=16,out_channels=16,expanded_channels=16,stride=2,use_se=True,nonlinearity=nn.ReLU()),
-            Bottleneck2D(in_channels=16,out_channels=24,expanded_channels=72,stride=2,nonlinearity=nn.ReLU()),
-            Bottleneck2D(in_channels=24,out_channels=24,expanded_channels=88,stride=1,nonlinearity=nn.ReLU())
+            Bottleneck2D(in_channels=16,out_channels=16,expanded_channels=16,stride=2,use_se=True,nonlinearity=nn.ReLU(),dropout=0.2),
+            Bottleneck2D(in_channels=16,out_channels=24,expanded_channels=72,stride=2,nonlinearity=nn.ReLU(),dropout=0.2),
+            Bottleneck2D(in_channels=24,out_channels=24,expanded_channels=88,stride=1,nonlinearity=nn.ReLU(),dropout=0.2)
             )
     #5x5 bottlenecks (8, h-swish, squeeze-excite): 28x28x24 -> 7x7x96
         self.block3 = nn.Sequential(
-            Bottleneck2D(in_channels=24,out_channels=40,expanded_channels=96,stride=2,use_se=True,kernel_size=5),
-            Bottleneck2D(in_channels=40,out_channels=40,expanded_channels=240,stride=1,use_se=True,kernel_size=5),
-            Bottleneck2D(in_channels=40,out_channels=40,expanded_channels=240,stride=1,use_se=True,kernel_size=5),
-            Bottleneck2D(in_channels=40,out_channels=48,expanded_channels=120,stride=1,use_se=True,kernel_size=5),
-            Bottleneck2D(in_channels=48,out_channels=48,expanded_channels=144,stride=1,use_se=True,kernel_size=5),
-            Bottleneck2D(in_channels=48,out_channels=96,expanded_channels=288,stride=2,use_se=True,kernel_size=5),
-            Bottleneck2D(in_channels=96,out_channels=96,expanded_channels=576,stride=1,use_se=True,kernel_size=5),
-            Bottleneck2D(in_channels=96,out_channels=96,expanded_channels=576,stride=1,use_se=True,kernel_size=5)
+            Bottleneck2D(in_channels=24,out_channels=40,expanded_channels=96,stride=2,use_se=True,kernel_size=5,dropout=0.2),
+            Bottleneck2D(in_channels=40,out_channels=40,expanded_channels=240,stride=1,use_se=True,kernel_size=5,dropout=0.2),
+            Bottleneck2D(in_channels=40,out_channels=40,expanded_channels=240,stride=1,use_se=True,kernel_size=5,dropout=0.2),
+            Bottleneck2D(in_channels=40,out_channels=48,expanded_channels=120,stride=1,use_se=True,kernel_size=5,dropout=0.2),
+            Bottleneck2D(in_channels=48,out_channels=48,expanded_channels=144,stride=1,use_se=True,kernel_size=5,dropout=0.2),
+            Bottleneck2D(in_channels=48,out_channels=96,expanded_channels=288,stride=2,use_se=True,kernel_size=5,dropout=0.2),
+            Bottleneck2D(in_channels=96,out_channels=96,expanded_channels=576,stride=1,use_se=True,kernel_size=5,dropout=0.2),
+            Bottleneck2D(in_channels=96,out_channels=96,expanded_channels=576,stride=1,use_se=True,kernel_size=5,dropout=0.2)
             )
     #conv2d (h-swish), avg pool 7x7: 7x7x96 -> 1x1x576
         self.block4 = nn.Sequential(
@@ -404,20 +412,28 @@ class MobileNetSmall2D(nn.Module):
             )
 
     def forward(self,x):
-        #reshape from N,C,T,H,W to N*T,C,H,W for 2d convolutions, we will keep N as 1
-        x = x.reshape(x.shape[0]*x.shape[2],x.shape[1],x.shape[3],x.shape[4])
-        x = self.block1(x)
-        x = self.block2(x)
-        x = self.block3(x)
-        x = self.block4(x)
-        #reshape for LSTM
-        x = x.permute(0,2,1,3).contiguous()
-        x = x.view(x.shape[0],x.shape[1],x.shape[2])
+        # x is of shape (batch_size, timesteps, C, H, W)
+        batch_size, timesteps, C, H, W = x.size()
+        cnn_out = torch.zeros(batch_size, timesteps, 576).to(x.device) #assuming the output of block4 is 576
+        #we're looping through the frames in the video
+        for i in range(timesteps):
+            # Select the frame at the ith position
+            frame = x[:, i, :, :, :]
+            frame = self.block1(frame)
+            frame = self.block2(frame)
+            frame = self.block3(frame)
+            frame = self.block4(frame)
+            # Flatten the frame (minus the batch dimension)
+            frame = frame.view(frame.size(0), -1)
+            cnn_out[:, i, :] = frame
+        # reshape for LSTM
+        x = cnn_out
         x, _ = self.lstm(x)
-        x = x[:,-1,:]
+        # get the output from the last timestep only
+        x = x[:, -1, :]
         x = self.classifier(x)
         return x
-    
+
     def initialize_weights(self):
         for module in self.modules():
             if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
