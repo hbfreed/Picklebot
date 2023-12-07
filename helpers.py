@@ -28,9 +28,18 @@ def video_pipeline(file_root, sequence_length, initial_prefetch_size,mean,std):
     videos = fn.normalize(videos,mean=mean,stddev=std)
     return videos, labels
 
-def calculate_accuracy_bce(outputs,labels,threshold=0.5):
-    # Apply threshold to obtain predicted classes
-    preds = (outputs >= threshold).float()
-    # Calculate the number of correct predictions
-    num_correct = torch.sum(preds == labels).item()
+def calculate_accuracy_bce(outputs, labels, threshold=0.5):
+    # Apply threshold to obtain predicted classes and move to CPU
+    preds = (outputs >= threshold).float().cpu()
+
+    # Move labels to CPU
+    labels = labels.cpu()
+
+    # Calculate the number of correct predictions using a larger integer data type to prevent overflow
+    num_correct = torch.sum(preds == labels, dtype=torch.int64).item()
+
+    # Checking the number of correct predictions
+    if num_correct not in range(5):
+        print(num_correct)
+        print(preds, outputs.cpu(), labels)
     return num_correct

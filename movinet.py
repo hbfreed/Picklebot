@@ -200,16 +200,16 @@ class MoViNetA2(nn.Module):
         out = self.classifier(out)
         return out
     
-    def forward(self,x):
-        x = self.block1(x)
-        x = self.block2(x)
-        x = self.block3(x)
-        x = self.block4(x)
-        x = self.block5(x)
-        x = self.block6(x)
-        x = self.conv(x)
-        x = self.classifier(x)
-        return x
+    # def forward(self,x):
+    #     x = self.block1(x)
+    #     x = self.block2(x)
+    #     x = self.block3(x)
+    #     x = self.block4(x)
+    #     x = self.block5(x)
+    #     x = self.block6(x)
+    #     x = self.conv(x)
+    #     x = self.classifier(x)
+    #     return x
 
 def initialize_weights(self):
     for m in self.modules():
