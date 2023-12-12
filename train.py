@@ -1,196 +1,321 @@
+#Train our models and save them to disk
+#Usage: python train.py --config config/config.json --dataloader torchvision
 import time
 import numpy as np
+import json
+import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision.transforms as transforms
 from torch.cuda.amp import GradScaler, autocast
 from tqdm import tqdm
 from psutil import cpu_count
-from torch.utils.data import DataLoader
-from visdom import Visdom
-from dataloader import PicklebotDataset, custom_collate
-from mobilenet import MobileNetLarge, MobileNetSmall, MobileNetSmallNoLSTM,MobileNetLargeNoLSTM
+from torchvision import transforms
+from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.utils.tensorboard import SummaryWriter
+from mobilenet import MobileNetSmall3D,MobileNetLarge3D
+from movinet import MoViNetA2
+from helpers import calculate_accuracy_bce, average_for_plotting, calculate_accuracy
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-'''Balls are 0, strikes are 1'''
+def create_dataloader(dataloader,batch_size,mean,std):
+    #create dataloader
+    if dataloader == "torchvision":
+        from torch.utils.data import DataLoader
+        from dataloader import PicklebotDataset, custom_collate
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-#hyperparameters
+        #video paths
+        train_video_paths = '/workspace/picklebotdataset/train'
+        val_video_paths = '/workspace/picklebotdataset/val'
 
-learning_rate = 1e-5 #the paper quotes rmsprop with 0.1 lr, but we have a tiny batch size
-batch_size = 2 #the paper quotes 128 images/chip, but our hardware isn't good enough
-max_iters = 10
-eval_interval = 1
-weight_decay=0.0005
-momentum=0.9
-eps=np.sqrt(0.002) #From the pytorch blog post, "a reasonable approximation can be taken with the formula PyTorch_eps = sqrt(TF_eps)."
+        #annotations paths
+        train_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/train_labels.csv'
+        val_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/val_labels.csv'
 
-#annotations paths
-train_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/train_labels.csv'
-val_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/val_labels.csv'
-test_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/test_labels.csv'
+        #video paths
+        train_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/train_all_together'
+        val_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/val_all_together'
 
-#video paths
-train_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/train'
-val_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/val'
-test_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/test'
+        #establish our normalization using transforms, 
+        #note that we are doing this in our dataloader as opposed to in the training loop like with dali
+        transform = transforms.Normalize(mean,std)
 
-#dataset     
-
-transform = transforms.Normalize((0.5,), (0.5,))
-
-train_dataset = PicklebotDataset(train_annotations_file,train_video_paths,transform=transform)
-train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count()//2)
-val_dataset = PicklebotDataset(val_annotations_file,val_video_paths,transform=transform)
-val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count()//2)
-test_dataset = PicklebotDataset(test_annotations_file,test_video_paths,transform=transform)
-test_loader = DataLoader(test_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count()//2)
+        #dataset     
+        train_dataset = PicklebotDataset(train_annotations_file,train_video_paths,transform=transform)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count())
+        val_dataset = PicklebotDataset(val_annotations_file,val_video_paths,transform=transform)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count())
 
 
-#model, optimizer, loss function
-model = MobileNetSmallNoLSTM()
-optimizer = optim.RMSprop(params=model.parameters(),lr=learning_rate,weight_decay=weight_decay,momentum=momentum,eps=eps) #starting with AdamW for now. 
-#optimizer = optim.AdamW(params=model.parameters(),lr=learning_rate)
-criterion = nn.CrossEntropyLoss(ignore_index=2)#ignore_index=0 was ignoring the label 0!
-vis = Visdom()
-scaler = GradScaler()
-model_name = 'mobilenetsmallnolstm_test' 
-model = model.to(device)
+    elif dataloader == "Dali":
+        import os
+        from nvidia.dali.plugin.pytorch import DALIClassificationIterator, LastBatchPolicy
+        from helpers import video_pipeline
+
+        #information for the dali pipeline
+        sequence_length = 130 #longest videos in our dataset 
+        initial_prefetch_size = 20
+        num_train_videos = len(os.listdir(train_video_paths + '/' + 'balls')) + len(os.listdir(train_video_paths + '/' + 'strikes'))
+        num_val_videos = len(os.listdir(val_video_paths + '/' + 'balls')) + len(os.listdir(val_video_paths + '/' + 'strikes'))
+
+
+        #video paths
+        train_video_paths = '/workspace/picklebotdataset/train'
+        val_video_paths = '/workspace/picklebotdataset/val'
+
+        #multiply mean and val by 255 to convert to 0-255 range
+        mean = (torch.tensor(mean)*255)[None,None,None,:]
+        std = (torch.tensor(std)*255)[None,None,None,:]
+
+
+        #build our pipelines
+        train_pipe = video_pipeline(batch_size=batch_size, num_threads=cpu_count()//2, device_id=0, file_root=train_video_paths,
+                                    sequence_length=sequence_length,initial_prefetch_size=initial_prefetch_size,mean=mean*255,std=std*255)
+        val_pipe = video_pipeline(batch_size=batch_size, num_threads=cpu_count()//2, device_id=0, file_root=val_video_paths,
+                                sequence_length=sequence_length,initial_prefetch_size=initial_prefetch_size,mean=mean,std=std)
+
+        train_pipe.build()
+        val_pipe.build()
+
+
+        train_loader = DALIClassificationIterator(train_pipe, auto_reset=True,last_batch_policy=LastBatchPolicy.PARTIAL, size=num_train_videos)
+        val_loader = DALIClassificationIterator(val_pipe, auto_reset=True,last_batch_policy=LastBatchPolicy.PARTIAL, size=num_val_videos)
+
+        
+
+    elif dataloader == "rocAL":
+        raise NotImplementedError("rocAL dataloader not implemented yet")
+    else:
+        raise ValueError(f"Invalid dataloader: {dataloader}")
+    
+    return train_loader, val_loader
+
+def load_config(config_path):
+    with open(config_path) as config_file:
+        config = json.load(config_file)
+    return config
+
+def extract_features_labels(output,dataloader):
+    if dataloader == "torchvision":
+        features = output[0]
+        labels = output[1]
+
+    elif dataloader == "Dali":
+        features = features[0]["data"].float().to(device)
+        features = features/255 #normalize to 0-1
+        features = features.permute(0,-1,1,2,3) #move channels to front
+        labels = features[0]["label"].unsqueeze(1).to(device)
+    return features,labels
 
 @torch.no_grad()
-def estimate_loss():
-    #evaluate the model
+def estimate_loss(model,val_loader,criterion,dataloader="torchvision"):
     model.eval()
-    total_val_loss = 0.0
-    num_val_batches = 0
-    val_accuracy = []
-    #calculate the loss
-    for val_features,val_labels in val_loader:
-        val_features = val_features.transpose(1,2).to(device)
-        #val_labels = val_labels.to(torch.int64) #waiting to move to device until after forward pass, idk if this matters
-        val_outputs = model(val_features)
-        val_loss = criterion(val_outputs,val_labels.to(device))
-        total_val_loss += val_loss.item()
-        num_val_batches += 1        
-        val_correct += calculate_accuracy(val_outputs,val_labels)
-    avg_val_loss = total_val_loss / num_val_batches
-    val_accuracy = val_correct / len(val_dataset)
-    return avg_val_loss, val_accuracy
 
-def calculate_accuracy(outputs,labels):
-    predicted_classes = torch.argmax(outputs,dim=1).to(labels.device)
-    num_correct = torch.sum(predicted_classes == labels).item()
-    return num_correct
+    val_correct = 0
+    val_samples = 0
+    val_loss = 0
+    for batch_idx, output in enumerate(val_loader):
+        features,labels = extract_features_labels(output,dataloader)
+        outputs = model(features)
+        if criterion == "CE":
+            val_correct += calculate_accuracy(outputs,labels)
+        elif criterion == "BCE":
+            val_correct += calculate_accuracy_bce(outputs,labels)
+        val_samples += labels.size(0)
+        val_loss += criterion(outputs,labels).item()
+    val_loss /= len(val_loader)
+    val_accuracy = val_correct/val_samples
+    return val_loss, val_accuracy
 
-#try except block so we can manually early stop while saving the model
-#training loop
-start_time = time.time()
-train_losses = []
-val_losses = []
-train_correct = []
-train_percent = []
-val_percent = []
+def train(config, dataloader="torchvision"):
 
-try:
-    for iter in range(max_iters):
-        model.train()
-        #forward pass
-        for batch_idx, (features,labels) in tqdm(enumerate(train_loader)):
-            
-            labels = labels.to(torch.int64)
-            #transpose, our convolutions like channel to be index 1, so [batch,channel,time,height,width]
-            features = features.to(device) 
-            
-            #zero the gradients
-            optimizer.zero_grad(set_to_none=True)
-            
-            # with autocast():
-            outputs = model(features)
-            loss = criterion(outputs,labels.to(device))
+    #hyperparameters
+    torch.manual_seed(1234)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(1234)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
-            train_correct.append(calculate_accuracy(outputs,labels))
-            train_losses.append(loss.item())   
+    model_name = config["model_name"]
+    learning_rate = config["learning_rate"]
+    batch_size = config["batch_size"]
+    max_iters = config["max_iters"]
+    eval_interval = config["eval_interval"]
+    weight_decay = config["weight_decay"]
+    std = tuple(config["std"]) #(0.2104, 0.1986, 0.1829)
+    mean = tuple(config["mean"]) #(0.3939, 0.3817, 0.3314)
+    use_autocast = config["use_autocast"]
+    compile = config["compile"]
+    criterion = config["criterion"]
+    checkpoint = config["checkpoint"]
 
-            loss.backward()
+    print(f"Training model: {model_name} Using device: {device}")
 
-            
-            optimizer.step()
+    #create model
+    valid_models = {"MoViNetA2":MoViNetA2,"MobileNetLarge3D":MobileNetLarge3D,"MobileNetSmall3D":MobileNetSmall3D}
 
-
-
-            if batch_idx %  1797 == 0:
-
-                print(f" Batch {batch_idx}: loss: {loss:.4f} accuracy: {sum(train_correct)/(len(train_correct)*batch_size)*100:.2f}%")
-                vis.line(
-                    X=np.arange(batch_idx+1),
-                    Y=np.array(train_losses),
-                    win='Loss Plot',
-                    opts=dict(
-                        title='Train Losses',
-                        legend=['Training Loss'],
-                        xlabel='Batch Number',
-                        ylabel='Loss',
-                    )
-                )
-
-        if iter % eval_interval == 0 or iter == max_iters - 1:
-            #evaluate the model, call the estimate_loss function
-            val_loss, val_accuracy = estimate_loss()
-        
-            val_losses.append(val_loss)
-
-            train_percent.append(sum(train_correct)/len(train_correct)*batch_size)
-            val_percent.append(sum(val_accuracy)/len(val_accuracy)*batch_size)
-
-
-            vis.text(f"step {iter}: train loss:  {loss:.4f}, val loss: {val_loss:.4f}",win='loss_text')
-            vis.line(
-                X=np.arange(iter+1),
-                Y=np.concatenate((np.array(train_losses).reshape(-1, 1), np.array(val_losses).reshape(-1, 1)), axis=1),
-                win='Loss Plot',
-                opts=dict(
-                    title='Train and Validation Losses',
-                    legend=['Training Loss', 'Validation Loss'],
-                    xlabel='Iteration',
-                    ylabel='Loss',
-                    linecolor=np.array([[0, 0, 255], [255, 0, 0]]),
-                )
-            )
-            vis.text(f"step {iter}: train accuracy:  {train_percent[-1]*100:.2f}%, test accuracy: {val_percent[-1]*100:.2f}%",win='accuracy_text')
-            vis.line(
-                X=np.arange(iter+1),
-                Y=np.concatenate((np.array(train_percent).reshape(-1, 1), np.array(val_percent).reshape(-1, 1)), axis=1),
-                win='Accuracy Plot',
-                opts=dict(
-                    title='Train and Validation Accuracy',
-                    legend=['Training Accuracy', 'Validation Accuracy'],
-                    xlabel='Iteration',
-                    ylabel='Accuracy',
-                    linecolor=np.array([[0, 0, 255], [255, 0, 0]]),
-                )
-            )
-
-        elapsed = time.time() - start_time
-        remaining_iters = max_iters - iter
-        avg_time_per_iter = elapsed / (iter + 1)
-        estimated_remaining_time = remaining_iters * avg_time_per_iter
-        tqdm.write(f"Iter [{iter+1}/{max_iters}] - Elapsed Time: {elapsed:.2f}s  Remaining Time: [{estimated_remaining_time:.2f}]")
-
-        if iter == max_iters -1:
-            print("Training completed:") 
-            print(f"Final loss: {train_losses[-1]:.4f},")
-            print(f"Final val loss: {val_losses[-1]:.4f}, ")
-            print(f"Final train accuracy: {train_percent[-1]*100:.2f}%, ")
-            print(f"Final val accuracy: {val_percent[-1]*100:.2f}%") 
-            
-except KeyboardInterrupt:
-    print(f"Keyboard interrupt:\nFinal loss: {loss:.4f},\nFinal train loss: {train_losses[-1]:.4f}, ")
-    print(f"Final val loss: {val_losses[-1]:.4f}, ")
-    print(f"Final train accuracy: {train_percent[-1]*100:.2f}%, ")
-    print(f"Final val accuracy: {val_percent[-1]*100:.2f}%")
-
-finally:
-    torch.save(model.state_dict(), f'{model_name}.pth')
-    print(f"Model saved!") 
+    if model_name in valid_models:
+        if criterion == "CE":
+            model = valid_models[model_name](num_classes=2).to(device)
+        elif criterion == "BCE":
+            model = valid_models[model_name](num_classes=1).to(device)
+    else:
+        raise ValueError(f"Invalid model name: {model_name}")
     
+    model.initialize_weights()
+
+    if torch.cuda.device_count() > 1:
+        print(f"Using {torch.cuda.device_count()} GPUs")
+        model = nn.DataParallel(model)
+    
+    #create optimizer
+    optimizer = optim.AdamW(model.parameters(),lr=learning_rate,weight_decay=weight_decay)
+
+    #create scheduler
+    scheduler = CosineAnnealingLR(optimizer,T_max=max_iters)
+
+    #create loss function
+    valid_losses = {"CE":nn.CrossEntropyLoss(),"BCE":nn.BCEWithLogitsLoss()}
+    if criterion in valid_losses:
+        criterion = valid_losses[criterion]        
+
+    else:
+        raise ValueError(f"Invalid criterion: {criterion}")
+
+    #create scaler for mixed precision training
+    if use_autocast:
+        scaler = GradScaler()
+
+    #create tensorboard writer
+    run_name = f"{model_name}_{criterion}"
+    writer = SummaryWriter(f"runs/{run_name}")
+
+    if checkpoint is not None:
+        print("Loading checkpoint...")
+        checkpoint = torch.load(checkpoint)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        start_epoch = checkpoint["epoch"]
+        print(f"Loaded checkpoint at epoch {start_epoch}")
+
+    #compile the model
+    if compile:
+        print("compiling the model... (takes a ~minute)")
+        unoptimized_model = model
+        model = torch.compile(model)  # requires PyTorch 2 and a modern gpu (seems like mostly V/A/H 100s work best), these lines are straight from Karpathy 
+        print("compilation complete!")
+    
+    train_loader, val_loader = create_dataloader(dataloader,batch_size,mean,std)
+
+    
+    #train the model
+
+    #training loop
+    start_time = time.time()
+    print(f"Training... started at {time.ctime(start_time)}")
+    train_losses = torch.tensor([])
+    train_percent = torch.tensor([])
+    val_losses = []
+    val_percent = []
+
+    try:
+        for iter in range(max_iters):
+            model.train()
+            train_correct = 0
+            train_samples = 0
+            batch_loss_list = []
+            batch_percent_list = []
+            
+            for batch_idx, output in tqdm(enumerate(train_loader)):
+                features,labels = extract_features_labels(output,dataloader)
+
+                optimizer.zero_grad(set_to_none=True)
+
+                if use_autocast:
+                    with autocast():
+                        outputs = model(features)
+                        loss = criterion(outputs,labels)
+                    scaler.scale(loss).backward()
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    outputs = model(features)
+                    loss = criterion(outputs,labels)
+                    loss.backward()
+                    optimizer.step()
+
+                #calculate accuracy
+                if criterion == "CE":
+                    train_correct += calculate_accuracy(outputs,labels)
+                elif criterion == "BCE":
+                    train_correct += calculate_accuracy_bce(outputs,labels)
+                train_samples += labels.size(0)
+
+                #append to lists
+                batch_loss_list.append(loss.item())
+                batch_percent_list.append(train_correct/train_samples)
+
+                #write to tensorboard
+                writer.add_scalar("training loss",loss.item(),(iter+1)*batch_idx)
+                writer.add_scalar("training accuracy",train_correct/train_samples,(iter+1)*batch_idx)
+                writer.flush()
+        
+            scheduler.step() #update learning rate
+            train_losses = torch.cat((train_losses,average_for_plotting(batch_loss_list).unsqueeze(1)))
+            train_percent = torch.cat((train_percent,average_for_plotting(batch_percent_list).unsqueeze(1)))
+            elapsed_time = time.time() - start_time
+            remaining_iters = max_iters - iter
+            avg_time_per_iter = elapsed_time / (iter + 1)
+            estimated_remaining_time = remaining_iters * avg_time_per_iter
+
+            if iter % eval_interval == 0 or iter == max_iters - 1:
+                val_loss, val_accuracy = estimate_loss(model,val_loader,criterion,dataloader=dataloader)
+                val_losses.append(val_loss)
+                val_percent.append(val_accuracy)
+
+                print(f"Step {iter}: Train Loss: {train_losses[-1].mean().item():.4f}, Val Loss: {val_losses[-1]:.4f}")
+                print(f"Step {iter}: Train Accuracy: {(train_percent[-1].mean().item())*100:.2f}%, Val Accuracy: {val_percent[-1]*100:.2f}%")
+                writer.add_scalar('val loss', val_losses[-1], iter)
+                writer.add_scalar('val accuracy', val_percent[-1], iter)
+                torch.save(model.state_dict(), f'checkpoints/{model_name}{iter}.pth')
+
+            tqdm.write(f"Iter [{iter+1}/{max_iters}] - Elapsed Time: {elapsed_time:.2f}s - Remaining Time: [{estimated_remaining_time:.2f}]")
+
+            if iter == max_iters - 1:
+                print("Training completed:")
+                print(f"Final Train Loss: {train_losses[-1].mean().item():.4f}")
+                print(f"Final Val Loss: {val_losses[-1]:.4f}")
+                print(f"Final Train Accuracy: {(train_percent[-1].mean().item())*100:.2f}%")
+                print(f"Final Val Accuracy: {val_percent[-1]*100:.2f}%")
+
+
+            
+
+    except KeyboardInterrupt:
+        print(f"Keyboard interrupt,\nFinal Train Loss: {train_losses[-1].mean().item():.4f}")
+        print(f"Final Val Loss: {val_losses[-1]:.4f}")
+        print(f"Final Train Accuracy: {(train_percent[-1].mean().item())*100:.2f}%")
+        print(f"Final Val Accuracy: {val_percent[-1]*100:.2f}%")
+    finally:
+        torch.save(model.state_dict(), f'checkpoints/{run_name}_finished.pth')
+        with open(f'statistics/{run_name}_finished_train_losses.npy', 'wb') as f:
+            np.save(f, train_losses.numpy())
+        with open(f'statistics/{run_name}_finished_val_losses.npy', 'wb') as f:
+            np.save(f, np.array(val_losses))
+        with open(f'statistics/{run_name}_finished_train_percent.npy', 'wb') as f:
+            np.save(f, train_percent.numpy())
+        with open(f'statistics/{run_name}_finished_val_percent.npy', 'wb') as f:
+            np.save(f, np.array(val_percent))
+        print(f"Model and statistics saved!")
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description="Train a model with the specified config")
+    parser.add_argument("--config","-c", type=str, required=True, help="Path to config file")
+    parser.add_argument("--dataloader", "-d", type=str, required=False, help="Choose a dataloader from torchvision, Dali, or rocAL")
+    args = parser.parse_args()
+
+    config = load_config(args.config)
+    dataloader = args.dataloader
+    train(config,dataloader="torchvision")
