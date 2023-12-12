@@ -1,4 +1,3 @@
-import math
 import torch
 import torch.nn as nn
 from torch.nn import init
@@ -42,14 +41,11 @@ class MoviNetBottleneck(nn.Module):
 
 #A2 takes 224x224 resolution video as specified in the paper
 class MoViNetA2(nn.Module):
-    def __init__(self, num_classes=2, subclip_length=50,buffer_size=2):
+    def __init__(self, num_classes=2, buffer_size=2): 
         super().__init__()
 
         #define our number of classes
         self.num_classes = num_classes
-
-        #initialize the subclip length
-        self.subclip_length=subclip_length
 
         #initialize the stream buffers
         self.buffer_size = buffer_size
@@ -145,71 +141,54 @@ class MoViNetA2(nn.Module):
         )
             
 
-#I think, in this forward pass, we have implemented the stream buffer from the paper.
-    def forward(self, x):
-        batch_size, C, T, H, W = x.shape
-        num_clips = math.ceil(T/self.subclip_length)
+#I think, in this forward pass, we have ~implemented the stream buffer from the paper.
+    def forward(self, x, buffers=None):
+
         
-        # Initialize buffers for each block
-        buffer1 = torch.zeros(batch_size, 3, self.buffer_size, H, W, device=x.device).requires_grad_(False)
-        buffer2 = torch.zeros(batch_size, 16, self.buffer_size, H//2, W//2, device=x.device).requires_grad_(False)
-        buffer3 = torch.zeros(batch_size, 40, self.buffer_size, H//4, W//4, device=x.device).requires_grad_(False)
-        buffer4 = torch.zeros(batch_size, 72, self.buffer_size, H//8, H//8, device=x.device).requires_grad_(False)
-        buffer5 = torch.zeros(batch_size, 72, self.buffer_size, H//8, H//8, device=x.device).requires_grad_(False)
-        buffer6 = torch.zeros(batch_size, 144, self.buffer_size, H//16, H//16, device=x.device).requires_grad_(False)
+
+        # Block 1
+        out = self.block1(x)
+        x_with_buffer = torch.cat((out, out), dim=2)
+        buffer1 = out[:, :, -self.buffer_size:, :, :].detach()
+        # Block 2
+        x_with_buffer = torch.cat((buffer1, out), dim=2)
+        out = self.block2(x_with_buffer)
+        buffer2 = out[:, :, -self.buffer_size:, :, :].detach()
+
+        x_with_buffer = torch.cat((buffer2, out), dim=2)
+        out = self.block3(x_with_buffer)
+        buffer3 = out[:, :, -self.buffer_size:, :, :].detach()
+
+        x_with_buffer = torch.cat((buffer3, out), dim=2)
+        out = self.block4(x_with_buffer)
+        buffer4 = out[:, :, -self.buffer_size:, :, :].detach()
         
-        pooled_outputs = []
+        x_with_buffer = torch.cat((buffer4, out), dim=2)
+        out = self.block5(x_with_buffer)
+        buffer5 = out[:, :, -self.buffer_size:, :, :].detach()
+        
+        x_with_buffer = torch.cat((buffer5, out), dim=2)
+        out = self.block6(x_with_buffer)
+        buffer6 = out[:, :, -self.buffer_size:, :, :].detach()
 
-        for i in range(num_clips):
-            start_idx = i * self.subclip_length
-            end_idx = start_idx + self.subclip_length
-            x_clip = x[:, :, start_idx:end_idx, :, :]
+        
+        x_with_buffer = torch.cat((buffer6, out), dim=2)
+        out = self.conv(x_with_buffer)
+        
+        buffers = [buffer1, buffer2, buffer3, buffer4, buffer5, buffer6]
 
-            # Block 1
-            out = self.block1(x_clip)
-            buffer1 = out[:, :, -self.buffer_size:, :, :].detach()
-            # Block 2
-            x_with_buffer = torch.cat((buffer1, out), dim=2)
-            out = self.block2(x_with_buffer)
-            buffer2 = out[:, :, -self.buffer_size:, :, :].detach()
-
-            x_with_buffer = torch.cat((buffer2, out), dim=2)
-            out = self.block3(x_with_buffer)
-            buffer3 = out[:, :, -self.buffer_size:, :, :].detach()
-
-            x_with_buffer = torch.cat((buffer3, out), dim=2)
-            out = self.block4(x_with_buffer)
-            buffer4 = out[:, :, -self.buffer_size:, :, :].detach()
-            
-            x_with_buffer = torch.cat((buffer4, out), dim=2)
-            out = self.block5(x_with_buffer)
-            buffer5 = out[:, :, -self.buffer_size:, :, :].detach()
-            
-            x_with_buffer = torch.cat((buffer5, out), dim=2)
-            out = self.block6(x_with_buffer)
-            buffer6 = out[:, :, -self.buffer_size:, :, :].detach()
-
-            
-            x_with_buffer = torch.cat((buffer6, out), dim=2)
-            out = self.conv(x_with_buffer)
-            
-            pooled_outputs.append(out)
-
-        out = torch.cat(pooled_outputs, dim=2)
-        out = nn.AdaptiveAvgPool3d((1,1,1))(out)
-        out = self.classifier(out)
-        return out
+        return out, buffers 
     
-    # def forward(self,x):
-    #     x = self.block1(x)
-    #     x = self.block2(x)
-    #     x = self.block3(x)
-    #     x = self.block4(x)
-    #     x = self.block5(x)
-    #     x = self.block6(x)
-    #     x = self.conv(x)
-    #     x = self.classifier(x)
-    #     return x
+    def forward(self,x):
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.block4(x)
+        x = self.block5(x)
+        x = self.block6(x)
+        x = self.conv(x)
+        x = self.classifier(x)
+        return x
 
 def initialize_weights(self):
     for m in self.modules():
