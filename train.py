@@ -31,12 +31,12 @@ def create_dataloader(dataloader,batch_size,mean,std):
         val_video_paths = '/workspace/picklebotdataset/val'
 
         #annotations paths
-        train_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/train_labels.csv'
-        val_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/val_labels.csv'
+        train_annotations_file = '/home/hankhome/Documents/PythonProjects/picklebotdataset/train_labels.csv'
+        val_annotations_file = '/home/hankhome/Documents/PythonProjects/picklebotdataset/val_labels.csv'
 
         #video paths
-        train_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/train_all_together'
-        val_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/val_all_together'
+        train_video_paths = '/home/hankhome/Documents/PythonProjects/picklebotdataset/train_all_together'
+        val_video_paths = '/home/hankhome/Documents/PythonProjects/picklebotdataset/val_all_together'
 
         #establish our normalization using transforms, 
         #note that we are doing this in our dataloader as opposed to in the training loop like with dali
@@ -49,7 +49,7 @@ def create_dataloader(dataloader,batch_size,mean,std):
         val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count())
 
 
-    elif dataloader == "Dali":
+    elif dataloader == "dali":
         import os
         from nvidia.dali.plugin.pytorch import DALIClassificationIterator, LastBatchPolicy
         from helpers import video_pipeline
@@ -57,18 +57,20 @@ def create_dataloader(dataloader,batch_size,mean,std):
         #information for the dali pipeline
         sequence_length = 130 #longest videos in our dataset 
         initial_prefetch_size = 20
-        num_train_videos = len(os.listdir(train_video_paths + '/' + 'balls')) + len(os.listdir(train_video_paths + '/' + 'strikes'))
-        num_val_videos = len(os.listdir(val_video_paths + '/' + 'balls')) + len(os.listdir(val_video_paths + '/' + 'strikes'))
 
 
         #video paths
-        train_video_paths = '/workspace/picklebotdataset/train'
-        val_video_paths = '/workspace/picklebotdataset/val'
+        train_video_paths = '/home/hankhome/Documents/PythonProjects/picklebotdataset/train'
+        val_video_paths = '/home/hankhome/Documents/PythonProjects/picklebotdataset/val'
+
+        num_train_videos = len(os.listdir(train_video_paths + '/' + 'balls')) + len(os.listdir(train_video_paths + '/' + 'strikes'))
+        num_val_videos = len(os.listdir(val_video_paths + '/' + 'balls')) + len(os.listdir(val_video_paths + '/' + 'strikes'))
 
         #multiply mean and val by 255 to convert to 0-255 range
         mean = (torch.tensor(mean)*255)[None,None,None,:]
         std = (torch.tensor(std)*255)[None,None,None,:]
 
+        print("Building pipelines...")
 
         #build our pipelines
         train_pipe = video_pipeline(batch_size=batch_size, num_threads=cpu_count()//2, device_id=0, file_root=train_video_paths,
@@ -102,11 +104,11 @@ def extract_features_labels(output,dataloader):
         features = output[0]
         labels = output[1]
 
-    elif dataloader == "Dali":
-        features = features[0]["data"].float().to(device)
+    elif dataloader == "dali":
+        features = output[0]["data"].float().to(device)
         features = features/255 #normalize to 0-1
         features = features.permute(0,-1,1,2,3) #move channels to front
-        labels = features[0]["label"].unsqueeze(1).to(device)
+        labels = output[0]["label"].unsqueeze(1).to(device)
     return features,labels
 
 @torch.no_grad()
@@ -206,6 +208,7 @@ def train(config, dataloader="torchvision"):
         model = torch.compile(model)  # requires PyTorch 2 and a modern gpu (seems like mostly V/A/H 100s work best), these lines are straight from Karpathy 
         print("compilation complete!")
     
+    #create dataloader
     train_loader, val_loader = create_dataloader(dataloader,batch_size,mean,std)
 
     
@@ -313,9 +316,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Train a model with the specified config")
     parser.add_argument("--config","-c", type=str, required=True, help="Path to config file")
-    parser.add_argument("--dataloader", "-d", type=str, required=False, help="Choose a dataloader from torchvision, Dali, or rocAL")
+    parser.add_argument("--dataloader", "-d", type=str, required=False, help="Choose a dataloader from torchvision, dali, or rocal")
     args = parser.parse_args()
-
     config = load_config(args.config)
     dataloader = args.dataloader
-    train(config,dataloader="torchvision")
+    train(config,dataloader)
