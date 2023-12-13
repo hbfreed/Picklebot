@@ -108,7 +108,7 @@ def extract_features_labels(output,dataloader):
         features = output[0]["data"].float().to(device)
         features = features/255 #normalize to 0-1
         features = features.permute(0,-1,1,2,3) #move channels to front
-        labels = output[0]["label"].unsqueeze(1).to(device)
+        labels = output[0]["label"].to(device)
     return features,labels
 
 @torch.no_grad()
