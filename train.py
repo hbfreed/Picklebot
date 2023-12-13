@@ -109,6 +109,7 @@ def extract_features_labels(output,dataloader):
         features = features/255 #normalize to 0-1
         features = features.permute(0,-1,1,2,3) #move channels to front
         labels = output[0]["label"].to(device)
+        labels = labels.float()
     return features,labels
 
 @torch.no_grad()
@@ -216,7 +217,7 @@ def train(config, dataloader="torchvision"):
 
     #training loop
     start_time = time.time()
-    print(f"Training... started at {time.ctime(start_time)}")
+    print(f"Training... started: {time.ctime(start_time)}")
     train_losses = torch.tensor([])
     train_percent = torch.tensor([])
     val_losses = []
