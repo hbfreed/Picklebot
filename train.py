@@ -101,8 +101,8 @@ def load_config(config_path):
 
 def extract_features_labels(output,dataloader):
     if dataloader == "torchvision":
-        features = output[0]
-        labels = output[1]
+        features = output[0].to(device)
+        labels = output[1].unsqueeze(1).to(device)
 
     elif dataloader == "dali":
         features = output[0]["data"].float().to(device)
@@ -113,7 +113,7 @@ def extract_features_labels(output,dataloader):
     return features,labels
 
 @torch.no_grad()
-def estimate_loss(model,val_loader,criterion,dataloader="torchvision"):
+def estimate_loss(model,val_loader,criterion,dataloader):
     model.eval()
 
     val_correct = 0
@@ -320,5 +320,9 @@ if __name__ == "__main__":
     parser.add_argument("--dataloader", "-d", type=str, required=False, help="Choose a dataloader from torchvision, dali, or rocal")
     args = parser.parse_args()
     config = load_config(args.config)
-    dataloader = args.dataloader
+    if args.dataloader is not None:
+        dataloader = args.dataloader
+    else:
+        dataloader = "torchvision"
+
     train(config,dataloader)

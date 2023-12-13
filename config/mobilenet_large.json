@@ -1,5 +1,5 @@
 {
-"model_name" : "MobileNetSmall3D",
+"model_name" : "MobileNetLarge3D",
 "learning_rate": 3e-4,
 "batch_size": 4,
 "max_iters": 100,
