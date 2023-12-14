@@ -38,8 +38,4 @@ def calculate_accuracy_bce(outputs, labels, threshold=0.5):
     # Calculate the number of correct predictions using a larger integer data type to prevent overflow
     num_correct = torch.sum(preds == labels, dtype=torch.int64).item()
 
-    # Checking the number of correct predictions
-    if num_correct not in range(5):
-        print(num_correct)
-        print(preds, outputs.cpu(), labels)
     return num_correct
