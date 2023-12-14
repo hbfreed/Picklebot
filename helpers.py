@@ -30,6 +30,7 @@ def video_pipeline(file_root, sequence_length, initial_prefetch_size,mean,std):
 
 def calculate_accuracy_bce(outputs, labels, threshold=0.5):
     # Apply threshold to obtain predicted classes and move to CPU
+    outputs = torch.sigmoid(outputs)
     preds = (outputs >= threshold).float().cpu()
 
     # Move labels to CPU
