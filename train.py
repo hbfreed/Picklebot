@@ -1,5 +1,6 @@
 #Train our models and save them to disk
 #Usage: python train.py --config config/config.json --dataloader torchvision
+import os
 import time
 import numpy as np
 import json
@@ -50,7 +51,6 @@ def create_dataloader(dataloader,batch_size,mean,std):
 
 
     elif dataloader == "dali":
-        import os
         from nvidia.dali.plugin.pytorch import DALIClassificationIterator, LastBatchPolicy
         from helpers import video_pipeline
 
@@ -89,6 +89,47 @@ def create_dataloader(dataloader,batch_size,mean,std):
 
     elif dataloader == "rocAL":
         raise NotImplementedError("rocAL dataloader not implemented yet")
+        #this will need testing, but here's a stab at it
+        from amd.rocal.plugin.pytorch import ROCALClassificationIterator
+
+        # Define the parameters for the ROCAL video reader
+        video_folder_path = '/path/to/your/mp4/videos'
+        shuffle = True
+        file_list = '/path/to/your/file_list.txt'  # A text file listing the videos and their labels
+
+        # Create a file list in the format required by ROCAL
+        # Each line should have the format: video_filepath label_index
+        # Example:
+        # /path/to/video1.mp4 0
+        # /path/to/video2.mp4 1
+        # ...
+        # You can create this file manually or write a script to generate it based on your dataset structure.
+        # Make sure the file paths and labels are correct regarding your dataset.
+
+        # Define a ROCAL pipeline for loading and augmenting videos
+        class VideoPipe():
+            def __init__(self, batch_size, num_threads, device_id, data, shuffle):
+                self.input = ops.VideoReader(device="gpu", file_root=data, sequence_length=16,
+                                            shard_id=device_id, random_shuffle=shuffle)
+                self.crop = ops.Crop(device="gpu", crop=crop_size)
+                self.uniform = ops.Uniform(range=(0.0, 1.0))
+                self.transpose = ops.Transpose(device="gpu", perm=[3, 0, 1, 2])  # Change from DHWC to CDHW
+
+            def define_graph(self):
+                video, labels = self.input(name="Reader")
+                video = self.crop(video, crop_pos_x=self.uniform(), crop_pos_y=self.uniform())
+                video = self.transpose(video)
+                return video, labels
+
+        # Instantiate the pipeline
+        device_id = torch.cuda.current_device()
+        pipe = VideoPipe(batch_size=batch_size, num_threads=cpu_count(), device_id=device_id,
+                        data=video_folder_path, shuffle=shuffle)
+        pipe.build()
+
+        # Create the ROCALClassificationIterator
+        data_loader = ROCALClassificationIterator(pipe, size=pipe.epoch_size("Reader"))
+
     else:
         raise ValueError(f"Invalid dataloader: {dataloader}")
     
