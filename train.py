@@ -18,7 +18,7 @@ from mobilenet import MobileNetSmall3D,MobileNetLarge3D
 from movinet import MoViNetA2
 from helpers import calculate_accuracy_bce, average_for_plotting, calculate_accuracy
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
 
 
