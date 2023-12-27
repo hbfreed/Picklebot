@@ -1,7 +1,38 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.nn import init
 from mobilenet import SEBlock3D
+
+class CausalConv3d(nn.Module):
+    def __init__(self,in_channels, out_channels, kernel_size, stride=1, dilation=1, **kwargs):
+        super().__init__()
+        
+        #ensure kernel_size and dilation are tuples
+        if not isinstance(kernel_size, tuple):
+            kernel_size = (kernel_size, kernel_size, kernel_size)
+        if not isinstance(dilation, tuple):
+            dilation = (dilation, dilation, dilation)
+
+        self.temporal_padding = (kernel_size[0] - 1) * dilation[0] #for T
+
+        self.spatial_padding = [(k - 1) * d // 2 for k, d in zip(kernel_size[1:], dilation[1:])] #for height and width
+        
+        self.conv3d = nn.Conv3d(in_channels, out_channels, kernel_size,
+                                stride=stride, dilation=dilation, padding=(0, *self.spatial_padding), **kwargs)
+
+    def forward(self, x):
+        x = F.pad(x,(0,0,0,0,self.temporal_padding,0)) #pad with the temporal dimension
+
+        x = self.conv3d(x) #apply the convolution
+
+        #remove the future, only focus on the past timesteps
+        x = x[:, :, :-self.temporal_padding, :, :] if self.temporal_padding != 0 else x
+        
+        return x
+
+
+
 
 class MoviNetBottleneck(nn.Module):
     def __init__(self, in_channels, out_channels, expanded_channels, kernel_size,stride=1, use_se=True,batchnorm=True, nonlinearity=nn.Hardswish(),bias=False,dropout=0,padding_size=None):
