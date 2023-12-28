@@ -19,7 +19,7 @@ from movinet import MoViNetA2
 from helpers import calculate_accuracy_bce, average_for_plotting, calculate_accuracy
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
+dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
 
 
 def create_dataloader(dataloader,batch_size,mean,std):
@@ -88,7 +88,7 @@ def create_dataloader(dataloader,batch_size,mean,std):
 
         
 
-    elif dataloader == "rocAL":
+    elif dataloader == "rocal":
         raise NotImplementedError("rocAL dataloader not implemented yet")
         #this will need testing, but here's a stab at it
         from amd.rocal.plugin.pytorch import ROCALClassificationIterator
@@ -279,7 +279,7 @@ def train(config, dataloader="torchvision"):
                 optimizer.zero_grad(set_to_none=True)
 
                 if use_autocast:
-                    with autocast():
+                    with autocast(dtype=dtype):
                         outputs = model(features)
                         loss = criterion(outputs,labels)
                     scaler.scale(loss).backward()
