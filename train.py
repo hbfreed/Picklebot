@@ -33,12 +33,12 @@ def create_dataloader(dataloader,batch_size,mean,std):
         val_video_paths = '/workspace/picklebotdataset/val'
 
         #annotations paths
-        train_annotations_file = '/home/hankhome/Documents/PythonProjects/picklebotdataset/train_labels.csv'
-        val_annotations_file = '/home/hankhome/Documents/PythonProjects/picklebotdataset/val_labels.csv'
+        train_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/train_labels.csv'
+        val_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/val_labels.csv'
 
         #video paths
-        train_video_paths = '/home/hankhome/Documents/PythonProjects/picklebotdataset/train_all_together'
-        val_video_paths = '/home/hankhome/Documents/PythonProjects/picklebotdataset/val_all_together'
+        train_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/train_all_together'
+        val_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/val_all_together'
 
         #establish our normalization using transforms, 
         #note that we are doing this in our dataloader as opposed to in the training loop like with dali
@@ -46,9 +46,9 @@ def create_dataloader(dataloader,batch_size,mean,std):
 
         #dataset     
         train_dataset = PicklebotDataset(train_annotations_file,train_video_paths,transform=transform)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count())
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=24)
         val_dataset = PicklebotDataset(val_annotations_file,val_video_paths,transform=transform)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count())
+        val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=24)
 
 
     elif dataloader == "dali":
