@@ -196,7 +196,7 @@ def train(config, dataloader="torchvision"):
     criterion = config["criterion"]
     checkpoint = config["checkpoint"]
 
-    print(f"Training model: {model_name} Using device: {device}")
+    print(f"Training model: {model_name} Using device: {device} with dtype: {dtype}")
 
     #create model
     valid_models = {"MoViNetA2":MoViNetA2,"MobileNetLarge3D":MobileNetLarge3D,"MobileNetSmall3D":MobileNetSmall3D}

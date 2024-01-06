@@ -13,16 +13,28 @@ def pad_batch(video,pad):
         video = video.permute(1,-1,2,0) #switch back, want channels to be first, so with batches, N,C,T,H,W
         return video
 
-def custom_collate(batch): #this custom collate pads our batch.
-    padded_batch = torch.tensor([])
-    labels = torch.tensor([])
-    max_length = max(video[0].shape[0] for video in batch)
-    for video in batch:
-        padded = pad_batch(video[0], max_length - video[0].shape[0])
-        padded_batch = torch.cat((padded_batch, padded.unsqueeze(0)), dim=0)
-        labels = torch.cat((labels, torch.tensor([video[1]])), dim=0)
+# def custom_collate(batch): #this custom collate pads our batch.
+#     padded_batch = torch.tensor([])
+#     labels = torch.tensor([])
+#     max_length = max(video[0].shape[0] for video in batch)
+#     for video in batch:
+#         padded = pad_batch(video[0], max_length - video[0].shape[0])
+#         padded_batch = torch.cat((padded_batch, padded.unsqueeze(0)), dim=0)
+#         labels = torch.cat((labels, torch.tensor([video[1]])), dim=0)
 
-    return padded_batch, labels
+#     return padded_batch, labels
+
+def custom_collate(batch): #this custom collate pads our batch, hopefully more efficiently than the above.
+    max_length = max(video[0].shape[0] for video in batch)
+    padded_videos = torch.zeros(len(batch), *batch[0][0].shape[1:], max_length)
+    labels = torch.tensor([video[1] for video in batch])
+
+    for i, (video, _) in enumerate(batch):
+        length = video.shape[0]
+        padded_videos[i, :, :, :, :length] = video
+
+    return padded_videos,labels
+
 
 
 class PicklebotDataset(Dataset):
