@@ -21,7 +21,7 @@ def average_for_plotting(loss_list,window_size=1000):
     return avg_losses
 #define our pipeline
 @pipeline_def
-def video_pipeline(file_root, sequence_length, initial_prefetch_size,mean,std):
+def dali_video_pipeline(file_root, sequence_length, initial_prefetch_size,mean,std):
     videos, labels = fn.readers.video(device="gpu", file_root=file_root, sequence_length=sequence_length,
                               shard_id=0, num_shards=1, random_shuffle=True, initial_fill=initial_prefetch_size,pad_sequences=True,
                               file_list_include_preceding_frame=False)

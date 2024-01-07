@@ -13,28 +13,16 @@ def pad_batch(video,pad):
         video = video.permute(1,-1,2,0) #switch back, want channels to be first, so with batches, N,C,T,H,W
         return video
 
-# def custom_collate(batch): #this custom collate pads our batch.
-#     padded_batch = torch.tensor([])
-#     labels = torch.tensor([])
-#     max_length = max(video[0].shape[0] for video in batch)
-#     for video in batch:
-#         padded = pad_batch(video[0], max_length - video[0].shape[0])
-#         padded_batch = torch.cat((padded_batch, padded.unsqueeze(0)), dim=0)
-#         labels = torch.cat((labels, torch.tensor([video[1]])), dim=0)
-
-#     return padded_batch, labels
-
-def custom_collate(batch): #this custom collate pads our batch, hopefully more efficiently than the above.
+def custom_collate(batch): #this custom collate pads our batch.
+    padded_batch = torch.tensor([])
+    labels = torch.tensor([])
     max_length = max(video[0].shape[0] for video in batch)
-    padded_videos = torch.zeros(len(batch), *batch[0][0].shape[1:], max_length)
-    labels = torch.tensor([video[1] for video in batch])
+    for video in batch:
+        padded = pad_batch(video[0], max_length - video[0].shape[0])
+        padded_batch = torch.cat((padded_batch, padded.unsqueeze(0)), dim=0)
+        labels = torch.cat((labels, torch.tensor([video[1]])), dim=0)
 
-    for i, (video, _) in enumerate(batch):
-        length = video.shape[0]
-        padded_videos[i, :, :, :, :length] = video
-
-    return padded_videos,labels
-
+    return padded_batch, labels
 
 
 class PicklebotDataset(Dataset):
@@ -48,8 +36,9 @@ class PicklebotDataset(Dataset):
         return len(self.video_labels)
         
     def __getitem__(self,idx):
+        dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
         video_path = os.path.join(self.video_dir, self.video_labels.iloc[idx,0])
-        video = read_video(video_path,output_format="TCHW",pts_unit='sec')[0]/255
+        video = (read_video(video_path,output_format="TCHW",pts_unit='sec')[0]/255).to(dtype=dtype)
         label = self.video_labels.iloc[idx,1]
         if self.transform:
             video = self.transform(video)

@@ -21,16 +21,11 @@ from helpers import calculate_accuracy_bce, average_for_plotting, calculate_accu
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
 
-
 def create_dataloader(dataloader,batch_size,mean,std):
     #create dataloader
     if dataloader == "torchvision":
         from torch.utils.data import DataLoader
         from dataloader import PicklebotDataset, custom_collate
-
-        #video paths
-        train_video_paths = '/workspace/picklebotdataset/train'
-        val_video_paths = '/workspace/picklebotdataset/val'
 
         #annotations paths
         train_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/train_labels.csv'
@@ -46,14 +41,14 @@ def create_dataloader(dataloader,batch_size,mean,std):
 
         #dataset     
         train_dataset = PicklebotDataset(train_annotations_file,train_video_paths,transform=transform)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=24)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=18)
         val_dataset = PicklebotDataset(val_annotations_file,val_video_paths,transform=transform)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=24)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=18)
 
 
     elif dataloader == "dali":
         from nvidia.dali.plugin.pytorch import DALIClassificationIterator, LastBatchPolicy
-        from helpers import video_pipeline
+        from helpers import dali_video_pipeline
 
         #information for the dali pipeline
         sequence_length = 130 #longest videos in our dataset 
@@ -61,8 +56,8 @@ def create_dataloader(dataloader,batch_size,mean,std):
 
 
         #video paths
-        train_video_paths = '/home/hankhome/Documents/PythonProjects/picklebotdataset/train'
-        val_video_paths = '/home/hankhome/Documents/PythonProjects/picklebotdataset/val'
+        train_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/train'
+        val_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/val'
 
         num_train_videos = len(os.listdir(train_video_paths + '/' + 'balls')) + len(os.listdir(train_video_paths + '/' + 'strikes'))
         num_val_videos = len(os.listdir(val_video_paths + '/' + 'balls')) + len(os.listdir(val_video_paths + '/' + 'strikes'))
@@ -71,12 +66,12 @@ def create_dataloader(dataloader,batch_size,mean,std):
         mean = (torch.tensor(mean)*255)[None,None,None,:]
         std = (torch.tensor(std)*255)[None,None,None,:]
 
-        print("Building pipelines...")
+        print("Building DALI pipelines...")
 
         #build our pipelines
-        train_pipe = video_pipeline(batch_size=batch_size, num_threads=cpu_count()//2, device_id=0, file_root=train_video_paths,
+        train_pipe = dali_video_pipeline(batch_size=batch_size, num_threads=cpu_count()//2, device_id=0, file_root=train_video_paths,
                                     sequence_length=sequence_length,initial_prefetch_size=initial_prefetch_size,mean=mean*255,std=std*255)
-        val_pipe = video_pipeline(batch_size=batch_size, num_threads=cpu_count()//2, device_id=0, file_root=val_video_paths,
+        val_pipe = dali_video_pipeline(batch_size=batch_size, num_threads=cpu_count()//2, device_id=0, file_root=val_video_paths,
                                 sequence_length=sequence_length,initial_prefetch_size=initial_prefetch_size,mean=mean,std=std)
 
         train_pipe.build()
@@ -89,52 +84,40 @@ def create_dataloader(dataloader,batch_size,mean,std):
         
 
     elif dataloader == "rocal":
-        raise NotImplementedError("rocAL dataloader not implemented yet")
-        #this will need testing, but here's a stab at it
         from amd.rocal.plugin.pytorch import ROCALClassificationIterator
+        from helpers import rocal_video_pipeline
 
-        # Define the parameters for the ROCAL video reader
-        video_folder_path = '/path/to/your/mp4/videos'
-        shuffle = True
-        file_list = '/path/to/your/file_list.txt'  # A text file listing the videos and their labels
+        #information for the dali pipeline
+        sequence_length = 130 #longest videos in our dataset 
+        initial_prefetch_size = 20
 
-        # Create a file list in the format required by ROCAL
-        # Each line should have the format: video_filepath label_index
-        # Example:
-        # /path/to/video1.mp4 0
-        # /path/to/video2.mp4 1
-        # ...
-        # You can create this file manually or write a script to generate it based on your dataset structure.
-        # Make sure the file paths and labels are correct regarding your dataset.
 
-        # Define a ROCAL pipeline for loading and augmenting videos
-        class VideoPipe():
-            def __init__(self, batch_size, num_threads, device_id, data, shuffle):
-                self.input = ops.VideoReader(device="gpu", file_root=data, sequence_length=16,
-                                            shard_id=device_id, random_shuffle=shuffle)
-                self.crop = ops.Crop(device="gpu", crop=crop_size)
-                self.uniform = ops.Uniform(range=(0.0, 1.0))
-                self.transpose = ops.Transpose(device="gpu", perm=[3, 0, 1, 2])  # Change from DHWC to CDHW
+        #video paths
+        train_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/train'
+        val_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/val'
 
-            def define_graph(self):
-                video, labels = self.input(name="Reader")
-                video = self.crop(video, crop_pos_x=self.uniform(), crop_pos_y=self.uniform())
-                video = self.transpose(video)
-                return video, labels
+        num_train_videos = len(os.listdir(train_video_paths + '/' + 'balls')) + len(os.listdir(train_video_paths + '/' + 'strikes'))
+        num_val_videos = len(os.listdir(val_video_paths + '/' + 'balls')) + len(os.listdir(val_video_paths + '/' + 'strikes'))
 
-        # Instantiate the pipeline
-        device_id = torch.cuda.current_device()
-        pipe = VideoPipe(batch_size=batch_size, num_threads=cpu_count(), device_id=device_id,
-                        data=video_folder_path, shuffle=shuffle)
-        pipe.build()
+        #multiply mean and val by 255 to convert to 0-255 range
+        mean = (torch.tensor(mean)*255)[None,None,None,:]
+        std = (torch.tensor(std)*255)[None,None,None,:]
 
-        # Create the ROCALClassificationIterator
-        data_loader = ROCALClassificationIterator(pipe, size=pipe.epoch_size("Reader"))
+        print("Building rocAL pipelines...")
 
-    else:
-        raise ValueError(f"Invalid dataloader: {dataloader}")
-    
-    return train_loader, val_loader
+        #build our pipelines
+        train_pipe = dali_video_pipeline(batch_size=batch_size, num_threads=cpu_count()//2, device_id=0, file_root=train_video_paths,
+                                    sequence_length=sequence_length,initial_prefetch_size=initial_prefetch_size,mean=mean*255,std=std*255)
+        val_pipe = dali_video_pipeline(batch_size=batch_size, num_threads=cpu_count()//2, device_id=0, file_root=val_video_paths,
+                                sequence_length=sequence_length,initial_prefetch_size=initial_prefetch_size,mean=mean,std=std)
+
+        train_pipe.build()
+        val_pipe.build()
+
+
+        train_loader = ROCALClassificationIterator(train_pipe, auto_reset=True, size=num_train_videos)
+        val_loader = ROCALClassificationIterator(val_pipe, auto_reset=True, size=num_val_videos)
+
 
 def load_config(config_path):
     with open(config_path) as config_file:
@@ -156,6 +139,7 @@ def extract_features_labels(output,dataloader):
 
 @torch.no_grad()
 def estimate_loss(model,val_loader,criterion,dataloader):
+    print("Evaluating...")
     model.eval()
 
     val_correct = 0
@@ -173,6 +157,7 @@ def estimate_loss(model,val_loader,criterion,dataloader):
     val_loss /= len(val_loader)
     val_accuracy = val_correct/val_samples
     return val_loss, val_accuracy
+
 
 def train(config, dataloader="torchvision"):
 
@@ -246,10 +231,10 @@ def train(config, dataloader="torchvision"):
 
     #compile the model
     if compile:
-        print("compiling the model... (takes a ~minute)")
+        print("Compiling the model... (takes a ~minute)")
         unoptimized_model = model
         model = torch.compile(model)  # requires PyTorch 2 and a modern gpu (seems like mostly V/A/H 100s work best), these lines are straight from Karpathy 
-        print("compilation complete!")
+        print("Compilation complete!")
     
     #create dataloader
     train_loader, val_loader = create_dataloader(dataloader,batch_size,mean,std)
@@ -296,6 +281,7 @@ def train(config, dataloader="torchvision"):
                     train_correct += calculate_accuracy(outputs,labels)
                 elif criterion == "BCE":
                     train_correct += calculate_accuracy_bce(outputs,labels)
+                    print(calculate_accuracy_bce(outputs,labels))
                 train_samples += labels.size(0)
 
                 #append to lists
@@ -335,8 +321,6 @@ def train(config, dataloader="torchvision"):
                 print(f"Final Train Accuracy: {(train_percent[-1].mean().item())*100:.2f}%")
                 print(f"Final Val Accuracy: {val_percent[-1]*100:.2f}%")
 
-
-            
 
     except KeyboardInterrupt:
         print(f"Keyboard interrupt,\nFinal Train Loss: {train_losses[-1].mean().item():.4f}")
