@@ -142,17 +142,18 @@ def extract_features_labels(output,dataloader):
 def estimate_loss(model,val_loader,criterion,dataloader):
     print("Evaluating...")
     model.eval()
-
+    print(criterion)
+    if str(criterion) == "CrossEntropyLoss()":
+        accuracy_calc = calculate_accuracy
+    elif str(criterion) == "BCEWithLogitsLoss()":
+        accuracy_calc = calculate_accuracy_bce
     val_correct = 0
     val_samples = 0
     val_loss = 0
     for batch_idx, output in tqdm(enumerate(val_loader)):
         features,labels = extract_features_labels(output,dataloader)
         outputs = model(features)
-        if criterion == nn.CrossEntropyLoss():
-            val_correct += calculate_accuracy(outputs,labels)
-        elif criterion == nn.BCEWithLogitsLoss():
-            val_correct += calculate_accuracy_bce(outputs,labels)
+        val_correct += accuracy_calc(outputs,labels)
         val_samples += labels.size(0)
         val_loss += criterion(outputs,labels).item()
     val_loss /= len(val_loader)
@@ -349,5 +350,4 @@ if __name__ == "__main__":
         dataloader = args.dataloader
     else:
         dataloader = "torchvision"
-
     train(config,dataloader)
