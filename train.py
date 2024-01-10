@@ -41,9 +41,9 @@ def create_dataloader(dataloader,batch_size,mean,std):
 
         #dataset     
         train_dataset = PicklebotDataset(train_annotations_file,train_video_paths,transform=transform)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=18)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=16)
         val_dataset = PicklebotDataset(val_annotations_file,val_video_paths,transform=transform)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=18)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=16)
 
 
     elif dataloader == "dali":
@@ -106,9 +106,9 @@ def create_dataloader(dataloader,batch_size,mean,std):
         print("Building rocAL pipelines...")
 
         #build our pipelines
-        train_pipe = dali_video_pipeline(batch_size=batch_size, num_threads=cpu_count()//2, device_id=0, file_root=train_video_paths,
+        train_pipe = rocal_video_pipeline(batch_size=batch_size, num_threads=cpu_count()//2, device_id=0, file_root=train_video_paths,
                                     sequence_length=sequence_length,initial_prefetch_size=initial_prefetch_size,mean=mean*255,std=std*255)
-        val_pipe = dali_video_pipeline(batch_size=batch_size, num_threads=cpu_count()//2, device_id=0, file_root=val_video_paths,
+        val_pipe = rocal_video_pipeline(batch_size=batch_size, num_threads=cpu_count()//2, device_id=0, file_root=val_video_paths,
                                 sequence_length=sequence_length,initial_prefetch_size=initial_prefetch_size,mean=mean,std=std)
 
         train_pipe.build()
@@ -117,6 +117,7 @@ def create_dataloader(dataloader,batch_size,mean,std):
 
         train_loader = ROCALClassificationIterator(train_pipe, auto_reset=True, size=num_train_videos)
         val_loader = ROCALClassificationIterator(val_pipe, auto_reset=True, size=num_val_videos)
+    return train_loader, val_loader
 
 
 def load_config(config_path):
@@ -145,12 +146,12 @@ def estimate_loss(model,val_loader,criterion,dataloader):
     val_correct = 0
     val_samples = 0
     val_loss = 0
-    for batch_idx, output in enumerate(val_loader):
+    for batch_idx, output in tqdm(enumerate(val_loader)):
         features,labels = extract_features_labels(output,dataloader)
         outputs = model(features)
-        if criterion == "CE":
+        if criterion == nn.CrossEntropyLoss():
             val_correct += calculate_accuracy(outputs,labels)
-        elif criterion == "BCE":
+        elif criterion == nn.BCEWithLogitsLoss():
             val_correct += calculate_accuracy_bce(outputs,labels)
         val_samples += labels.size(0)
         val_loss += criterion(outputs,labels).item()
@@ -189,8 +190,10 @@ def train(config, dataloader="torchvision"):
     if model_name in valid_models:
         if criterion == "CE":
             model = valid_models[model_name](num_classes=2).to(device)
+            accuracy_calc = calculate_accuracy
         elif criterion == "BCE":
             model = valid_models[model_name](num_classes=1).to(device)
+            accuracy_calc = calculate_accuracy_bce
     else:
         raise ValueError(f"Invalid model name: {model_name}")
     
@@ -276,12 +279,8 @@ def train(config, dataloader="torchvision"):
                     loss.backward()
                     optimizer.step()
 
-                #calculate accuracy
-                if criterion == "CE":
-                    train_correct += calculate_accuracy(outputs,labels)
-                elif criterion == "BCE":
-                    train_correct += calculate_accuracy_bce(outputs,labels)
-                    print(calculate_accuracy_bce(outputs,labels))
+
+                train_correct += accuracy_calc(outputs,labels)
                 train_samples += labels.size(0)
 
                 #append to lists

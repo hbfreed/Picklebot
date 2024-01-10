@@ -1,6 +1,8 @@
 import torch
-import nvidia.dali.fn as fn
-from nvidia.dali import pipeline_def
+import nvidia.dali.fn as dalifn
+from nvidia.dali import pipeline_def as dali_pipeline_def
+import amd.rocal.fn as fn 
+from amd.rocal.pipeline import pipeline_def
 
 #calculate the accuracy of the model, 
 def calculate_accuracy(outputs,labels):
@@ -20,8 +22,16 @@ def average_for_plotting(loss_list,window_size=1000):
         avg_losses = torch.tensor(loss_list).view(-1,1000).mean(1)
     return avg_losses
 #define our pipeline
-@pipeline_def
+@dali_pipeline_def
 def dali_video_pipeline(file_root, sequence_length, initial_prefetch_size,mean,std):
+    videos, labels = dalifn.readers.video(device="gpu", file_root=file_root, sequence_length=sequence_length,
+                              shard_id=0, num_shards=1, random_shuffle=True, initial_fill=initial_prefetch_size,pad_sequences=True,
+                              file_list_include_preceding_frame=False)
+    videos = dalifn.normalize(videos,mean=mean,stddev=std)
+    return videos, labels
+
+@pipeline_def
+def rocal_video_pipeline(file_root, sequence_length, initial_prefetch_size,mean,std):
     videos, labels = fn.readers.video(device="gpu", file_root=file_root, sequence_length=sequence_length,
                               shard_id=0, num_shards=1, random_shuffle=True, initial_fill=initial_prefetch_size,pad_sequences=True,
                               file_list_include_preceding_frame=False)
