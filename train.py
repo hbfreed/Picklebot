@@ -19,7 +19,7 @@ from movinet import MoViNetA2
 from helpers import calculate_accuracy_bce, average_for_plotting, calculate_accuracy
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
+dtype = torch.float16
 
 def create_dataloader(dataloader,batch_size,mean,std):
     #create dataloader
@@ -142,7 +142,6 @@ def extract_features_labels(output,dataloader):
 def estimate_loss(model,val_loader,criterion,dataloader):
     print("Evaluating...")
     model.eval()
-    print(criterion)
     if str(criterion) == "CrossEntropyLoss()":
         accuracy_calc = calculate_accuracy
     elif str(criterion) == "BCEWithLogitsLoss()":

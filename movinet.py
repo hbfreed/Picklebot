@@ -5,7 +5,7 @@ from torch.nn import init
 from mobilenet import SEBlock3D
 
 class CausalConv3d(nn.Module):
-    def __init__(self,in_channels, out_channels, kernel_size, stride=1, dilation=1, **kwargs):
+    def __init__(self,in_channels, out_channels, kernel_size, stride=1, dilation=1, stream_buffer=None, **kwargs):
         super().__init__()
         
         #ensure kernel_size and dilation are tuples
@@ -14,20 +14,27 @@ class CausalConv3d(nn.Module):
         if not isinstance(dilation, tuple):
             dilation = (dilation, dilation, dilation)
 
-        self.temporal_padding = (kernel_size[0] - 1) * dilation[0] #for T
+        if stream_buffer is not None:
+            self.stream_buffer =  stream_buffer #value to pad the temporal dimension with, if we have a stream buffer, use that
+        else:
+            self.stream_buffer = 0 #else, use 0.
 
-        self.spatial_padding = [(k - 1) * d // 2 for k, d in zip(kernel_size[1:], dilation[1:])] #for height and width
+        #calculate the padding needed to ensure the output is causal
+        if kernel_size[0] % 2 == 0:
+            p_left, p_right = (kernel_size[0]-2) // 2, kernel_size[0] // 2 #even 
+        else:
+            p_left, p_right = (kernel_size[0]-1) // 2, (kernel_size[0]-1) // 2 #odd
         
+        self.p_left_causal, self.p_right_causal = p_left + p_right, 0 
+        
+
         self.conv3d = nn.Conv3d(in_channels, out_channels, kernel_size,
-                                stride=stride, dilation=dilation, padding=(0, *self.spatial_padding), **kwargs)
+                                stride=stride, dilation=dilation, **kwargs)
 
     def forward(self, x):
-        x = F.pad(x,(0,0,0,0,self.temporal_padding,0)) #pad with the temporal dimension
-
+        pad = (0,0,0,0,self.p_left_causal,0) 
+        x = F.pad(x,pad, "constant", self.stream_buffer) #pad with the temporal dimension on the left. Not a fan of this API! I'm sure there's a good reason. x = (B, C, T, H, W)
         x = self.conv3d(x) #apply the convolution
-
-        #remove the future, only focus on the past timesteps
-        x = x[:, :, :-self.temporal_padding, :, :] if self.temporal_padding != 0 else x
         
         return x
 
@@ -43,7 +50,7 @@ class MoviNetBottleneck(nn.Module):
         default_padding = (kernel_size[0]-1, kernel_size[1]//2, kernel_size[2]//2) if isinstance(kernel_size, tuple) else kernel_size//2
         padding = default_padding if padding_size is None else padding_size
 
-        self.conv = nn.Conv3d(
+        self.conv = CausalConv3d(
             expanded_channels,
             expanded_channels,
             kernel_size=kernel_size,
@@ -54,7 +61,7 @@ class MoviNetBottleneck(nn.Module):
         )
         
         self.squeeze_excite = SEBlock3D(expanded_channels) if use_se else None
-        self.project = nn.Conv3d(expanded_channels, out_channels,kernel_size=1,bias=bias)
+        self.project = CausalConv3d(expanded_channels, out_channels,kernel_size=1,bias=bias)
         self.batchnorm = nn.BatchNorm3d(out_channels) if batchnorm else None
         self.nonlinearity = nonlinearity
         self.dropout = nn.Dropout3d(p=dropout)
@@ -83,7 +90,7 @@ class MoViNetA2(nn.Module):
 
         #define our first block, a 3D convolutional layer with 16 filters, kernel size of 1x3x3, stride of 1x2x2, and padding of 0x1x1  
         self.block1 = nn.Sequential(
-            nn.Conv3d(in_channels=3, out_channels=16, kernel_size=(1,3,3), stride=(1,2,2), padding=(0,1,1),bias=False),
+            CausalConv3d(in_channels=3, out_channels=16, kernel_size=(1,3,3), stride=(1,2,2), padding=(0,1,1),bias=False), #should be able to leave out stream buffer here
             nn.BatchNorm3d(16),
             nn.Hardswish()
         )
@@ -91,7 +98,7 @@ class MoViNetA2(nn.Module):
         #define our second block, a 3D convolutional layer with 16 filters, kernel size of 3x3x3, stride of 1x2x2, and padding of 1x1x1
         self.block2 = nn.Sequential(
             #1
-            MoviNetBottleneck(in_channels=16, out_channels=16, expanded_channels=40, kernel_size=(1,5,5),stride=(1,2,2)),
+            MoviNetBottleneck(in_channels=16, out_channels=16, expanded_channels=40, kernel_size=(1,5,5),stride=(1,2,2)), #should be able to leave out stream buffer here
             #2
             MoviNetBottleneck(in_channels=16, out_channels=16, expanded_channels=40, kernel_size=3),
             #3
@@ -131,8 +138,8 @@ class MoViNetA2(nn.Module):
             MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=3,dropout=0.2),
             #4
             MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=3),
-            #5
-            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=144,kernel_size=(1,5,5)),
+            #5 
+            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=144,kernel_size=(1,5,5)), #should be able to leave out stream buffer here
             #6
             MoviNetBottleneck(in_channels=72,out_channels=144,expanded_channels=240,kernel_size=3,dropout=0.2)
         )
@@ -141,17 +148,17 @@ class MoViNetA2(nn.Module):
             #1
             MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=480,kernel_size=(5,3,3),stride=(1,2,2),padding_size=(2,1,1),dropout=0.2),
             #2
-            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=384,kernel_size=(1,5,5)),
+            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=384,kernel_size=(1,5,5)), #should be able to leave out stream buffer here
             #3
-            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=384,kernel_size=(1,5,5),dropout=0.2),
+            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=384,kernel_size=(1,5,5),dropout=0.2), #should be able to leave out stream buffer here
             #4
-            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=480,kernel_size=(1,5,5)),
+            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=480,kernel_size=(1,5,5)), #should be able to leave out stream buffer here
             #5
-            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=480,kernel_size=(1,5,5),dropout=0.2),
+            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=480,kernel_size=(1,5,5),dropout=0.2), #should be able to leave out stream buffer here
             #6
             MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=480,kernel_size=3),
             #7
-            MoviNetBottleneck(in_channels=144,out_channels=640,expanded_channels=576,kernel_size=(1,3,3),dropout=0.2)
+            MoviNetBottleneck(in_channels=144,out_channels=640,expanded_channels=576,kernel_size=(1,3,3),dropout=0.2) #should be able to leave out stream buffer here
         )
 
         self.conv = nn.Sequential(
@@ -211,14 +218,23 @@ class MoViNetA2(nn.Module):
         return out, buffers 
     
     def forward(self,x):
+        print(f"Input shape: {x.shape}")
         x = self.block1(x)
+        print(f"Block 1 output shape: {x.shape}")
         x = self.block2(x)
+        print(f"Block 2 output shape: {x.shape}")
         x = self.block3(x)
+        print(f"Block 3 output shape: {x.shape}")
         x = self.block4(x)
+        print(f"Block 4 output shape: {x.shape}")
         x = self.block5(x)
+        print(f"Block 5 output shape: {x.shape}")
         x = self.block6(x)
+        print(f"Block 6 output shape: {x.shape}")
         x = self.conv(x)
+        print(f"Conv output shape: {x.shape}")
         x = self.classifier(x)
+        print(f"Classifier output shape: {x.shape}")
         return x
 
 def initialize_weights(self):

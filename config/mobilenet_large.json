@@ -7,7 +7,7 @@
 "weight_decay": 5e-4,
 "std": [0.2104, 0.1986, 0.1829],
 "mean": [0.3939, 0.3817, 0.3314],
-"use_autocast": true,
+"use_autocast": false,
 "compile": true,
 "criterion": "BCE",
 "checkpoint": null
