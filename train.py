@@ -19,7 +19,7 @@ from movinet import MoViNetA2
 from helpers import calculate_accuracy_bce, average_for_plotting, calculate_accuracy
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-dtype = torch.float16
+dtype = torch.bfloat16
 
 def create_dataloader(dataloader,batch_size,mean,std):
     #create dataloader
@@ -41,9 +41,9 @@ def create_dataloader(dataloader,batch_size,mean,std):
 
         #dataset     
         train_dataset = PicklebotDataset(train_annotations_file,train_video_paths,transform=transform)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=16)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count()//2)
         val_dataset = PicklebotDataset(val_annotations_file,val_video_paths,transform=transform)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=16)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=cpu_count()//2)
 
 
     elif dataloader == "dali":
@@ -127,7 +127,7 @@ def load_config(config_path):
 
 def extract_features_labels(output,dataloader):
     if dataloader == "torchvision":
-        features = output[0].to(device)
+        features = output[0].to(dtype).to(device)
         labels = output[1].unsqueeze(1).to(device)
 
     elif dataloader == "dali":
@@ -196,7 +196,7 @@ def train(config, dataloader="torchvision"):
             accuracy_calc = calculate_accuracy_bce
     else:
         raise ValueError(f"Invalid model name: {model_name}")
-    
+    model.to(dtype) 
     model.initialize_weights()
 
     if torch.cuda.device_count() > 1:
