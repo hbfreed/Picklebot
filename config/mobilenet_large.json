@@ -9,6 +9,6 @@
 "mean": [0.3939, 0.3817, 0.3314],
 "use_autocast": false,
 "compile": false,
-"criterion": "BCE",
+"criterion": "CE",
 "checkpoint": null
 }

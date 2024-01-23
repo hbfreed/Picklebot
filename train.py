@@ -210,7 +210,7 @@ def train(config, dataloader="torchvision"):
     scheduler = CosineAnnealingLR(optimizer,T_max=max_iters)
 
     #create loss function
-    valid_losses = {"CE":nn.CrossEntropyLoss(),"BCE":nn.BCEWithLogitsLoss()}
+    valid_losses = {"CE":nn.CrossEntropyLoss(weight=torch.tensor([1.0,1.5])),"BCE":nn.BCEWithLogitsLoss()}
     if criterion in valid_losses:
         criterion = valid_losses[criterion]        
 
