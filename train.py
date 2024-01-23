@@ -152,6 +152,8 @@ def estimate_loss(model,val_loader,criterion,dataloader):
     for batch_idx, output in tqdm(enumerate(val_loader)):
         features,labels = extract_features_labels(output,dataloader)
         outputs = model(features)
+        if str(criterion) == "CrossEntropyLoss()":
+            labels = labels.to(torch.long).squeeze(1)
         val_correct += accuracy_calc(outputs,labels)
         val_samples += labels.size(0)
         val_loss += criterion(outputs,labels).item()
@@ -210,7 +212,7 @@ def train(config, dataloader="torchvision"):
     scheduler = CosineAnnealingLR(optimizer,T_max=max_iters)
 
     #create loss function
-    valid_losses = {"CE":nn.CrossEntropyLoss(weight=torch.tensor([1.0,1.5])),"BCE":nn.BCEWithLogitsLoss()}
+    valid_losses = {"CE":nn.CrossEntropyLoss(weight=torch.tensor([1.0,1.5],device=device,dtype=dtype)),"BCE":nn.BCEWithLogitsLoss()}
     if criterion in valid_losses:
         criterion = valid_losses[criterion]        
 
@@ -269,12 +271,16 @@ def train(config, dataloader="torchvision"):
                 if use_autocast:
                     with autocast(dtype=dtype):
                         outputs = model(features)
+                        if str(criterion) == "CrossEntropyLoss()":
+                            labels = labels.to(torch.long).squeeze(1)
                         loss = criterion(outputs,labels)
                     scaler.scale(loss).backward()
                     scaler.step(optimizer)
                     scaler.update()
                 else:
                     outputs = model(features)
+                    if str(criterion) == "CrossEntropyLoss()":
+                        labels = labels.to(torch.long).squeeze(1)
                     loss = criterion(outputs,labels)
                     loss.backward()
                     optimizer.step()

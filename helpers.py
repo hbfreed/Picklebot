@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 #import nvidia.dali.fn as dalifn
 #from nvidia.dali import pipeline_def as dali_pipeline_def
 # import amd.rocal.fn as fn 
@@ -6,6 +7,7 @@ import torch
 
 #calculate the accuracy of the model, 
 def calculate_accuracy(outputs,labels):
+    outputs = F.softmax(outputs,dim=1)
     predicted_classes = torch.argmax(outputs,dim=1).to(labels.device)
     num_correct = torch.sum(predicted_classes == labels).item()
     return num_correct
