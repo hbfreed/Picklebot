@@ -41,9 +41,9 @@ def create_dataloader(dataloader,batch_size,mean,std):
 
         #dataset     
         train_dataset = PicklebotDataset(train_annotations_file,train_video_paths,transform=transform)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=36)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=24)
         val_dataset = PicklebotDataset(val_annotations_file,val_video_paths,transform=transform)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=36)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=24)
 
 
     elif dataloader == "dali":
@@ -296,7 +296,6 @@ def train(config, dataloader="torchvision"):
                 #write to tensorboard
                 writer.add_scalar("training loss",loss.item(),(iter+1)*batch_idx)
                 writer.add_scalar("training accuracy",train_correct/train_samples,(iter+1)*batch_idx)
-                writer.flush()
         
             scheduler.step() #update learning rate
             train_losses = torch.cat((train_losses,average_for_plotting(batch_loss_list).unsqueeze(1)))
