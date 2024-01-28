@@ -189,16 +189,16 @@ class MoViNetA2(nn.Module):
         x = self.classifier(x)
         return x
 
-def initialize_weights(self):
-    for m in self.modules():
-        if isinstance(m, nn.Conv3d):
-            init.kaiming_uniform_(m.weight, mode='fan_in', nonlinearity='relu')
-            if m.bias is not None:
+    def initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv3d):
+                init.kaiming_uniform_(m.weight, mode='fan_in', nonlinearity='relu')
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm3d):
+                init.constant_(m.weight, 1)
                 init.constant_(m.bias, 0)
-        elif isinstance(m, nn.BatchNorm3d):
-            init.constant_(m.weight, 1)
-            init.constant_(m.bias, 0)
-        elif isinstance(m, nn.Linear):
-            init.xavier_uniform_(m.weight)
-            if m.bias is not None:
-                init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
