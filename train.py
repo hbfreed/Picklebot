@@ -19,7 +19,7 @@ from movinet import MoViNetA2
 from helpers import calculate_accuracy_bce, average_for_plotting, calculate_accuracy
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-dtype = torch.bfloat16
+dtype = torch.bfloat16 if device == 'cuda' else torch.float16 
 
 def create_dataloader(dataloader,batch_size,mean,std):
     #create dataloader
@@ -212,7 +212,7 @@ def train(config, dataloader="torchvision"):
     scheduler = CosineAnnealingLR(optimizer,T_max=max_iters)
 
     #create loss function
-    valid_losses = {"CE":nn.CrossEntropyLoss(weight=torch.tensor([1.0,1.5],device=device,dtype=dtype)),"BCE":nn.BCEWithLogitsLoss()}
+    valid_losses = {"CE":nn.CrossEntropyLoss(weight=torch.tensor([1.0,1.5])),"BCE":nn.BCEWithLogitsLoss()}
     if criterion in valid_losses:
         criterion = valid_losses[criterion]        
 
@@ -238,7 +238,7 @@ def train(config, dataloader="torchvision"):
     if compile:
         print("Compiling the model... (takes a ~minute)")
         unoptimized_model = model
-        model = torch.compile(model)  # requires PyTorch 2 and a modern gpu (seems like mostly V/A/H 100s work best), these lines are straight from Karpathy 
+        model = torch.compile(model)  # requires PyTorch 2 and a modern gpu (seems like mostly V/A/H 100s work best), 
         print("Compilation complete!")
     
     #create dataloader
