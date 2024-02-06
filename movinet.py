@@ -41,15 +41,15 @@ class CausalConv3d(nn.Module):
 
 
 class MoviNetBottleneck(nn.Module):
-    def __init__(self, in_channels, out_channels, expanded_channels, kernel_size,stride=1, use_se=True,batchnorm=True, nonlinearity=nn.Hardswish(),bias=False,dropout=0,padding_size=None,dilation=1):
+    def __init__(self, in_channels, out_channels, expanded_channels, kernel_size,stride=1, use_se=True,batchnorm=True, nonlinearity=nn.Hardswish(),bias=False,dropout=0,padding=None,dilation=1):
         super().__init__()
 
         self.expand = nn.Conv3d(in_channels, expanded_channels,kernel_size=1,bias=bias)
 
         default_padding = (kernel_size[0]-1, kernel_size[1]//2, kernel_size[2]//2) if isinstance(kernel_size, tuple) else kernel_size//2
-        padding = default_padding if padding_size is None else padding_size
+        padding = default_padding if padding is None else padding
 
-        self.conv = CausalConv3d(
+        self.conv = nn.Conv3d(
             expanded_channels,
             expanded_channels,
             kernel_size=kernel_size,
@@ -61,7 +61,7 @@ class MoviNetBottleneck(nn.Module):
         )
         
         self.squeeze_excite = SEBlock3D(expanded_channels) if use_se else None
-        self.project = CausalConv3d(expanded_channels, out_channels,kernel_size=1,bias=bias)
+        self.project = nn.Conv3d(expanded_channels, out_channels,kernel_size=1,bias=bias)
         self.batchnorm = nn.BatchNorm3d(out_channels) if batchnorm else None
         self.nonlinearity = nonlinearity
         self.dropout = nn.Dropout3d(p=dropout)
@@ -76,7 +76,6 @@ class MoviNetBottleneck(nn.Module):
         x = self.nonlinearity(x)
         return x
 
-
 #A2 takes 224x224 resolution video as specified in the paper
 class MoViNetA2(nn.Module):
     def __init__(self, num_classes=2, buffer_size=2): 
@@ -90,79 +89,55 @@ class MoViNetA2(nn.Module):
 
         #define our first block, a 3D convolutional layer with 16 filters, kernel size of 1x3x3, stride of 1x2x2, and padding of 0x1x1  
         self.block1 = nn.Sequential(
-            CausalConv3d(in_channels=3, out_channels=16, kernel_size=(1,3,3), stride=(1,2,2), padding=(0,1,1),bias=False), #should be able to leave out stream buffer here
+            nn.Conv3d(in_channels=3, out_channels=16, kernel_size=(1,3,3), stride=(1,2,2), padding=(0,1,1),bias=False), #should be able to leave out stream buffer here
             nn.BatchNorm3d(16),
             nn.Hardswish()
         )
 
-        #define our second block, a 3D convolutional layer with 16 filters, kernel size of 3x3x3, stride of 1x2x2, and padding of 1x1x1
+        #Block2
         self.block2 = nn.Sequential(
-            #1
-            MoviNetBottleneck(in_channels=16, out_channels=16, expanded_channels=40, kernel_size=(1,5,5),stride=(1,2,2)), #should be able to leave out stream buffer here
-            #2
-            MoviNetBottleneck(in_channels=16, out_channels=16, expanded_channels=40, kernel_size=3,dilation=(2,1,1)),
-            #3
-            MoviNetBottleneck(in_channels=16, out_channels=40, expanded_channels=64,kernel_size=3,dropout=0.2,dilation=(2,1,1))
+            MoviNetBottleneck(16, 16, 40, kernel_size=(1,5,5), stride=(1,2,2), padding=(0,2,2)),
+            MoviNetBottleneck(16, 16, 40, kernel_size=(3,3,3), stride=(1,1,1), padding=(1,1,1)),
+            MoviNetBottleneck(16, 16, 64, kernel_size=(3,3,3), stride=(1,1,1), padding=(1,1,1))
         )
-
+        #block 3
         self.block3 = nn.Sequential(
-            #1
-            MoviNetBottleneck(in_channels=40,out_channels=40,expanded_channels=96,kernel_size=3,stride=(1,2,2),dilation=(2,1,1)),
-            #2
-            MoviNetBottleneck(in_channels=40,out_channels=40,expanded_channels=120,kernel_size=3,dropout=0.2,dilation=(2,1,1)),
-            #3
-            MoviNetBottleneck(in_channels=40,out_channels=40,expanded_channels=96,kernel_size=3,dilation=(2,1,1)),
-            #4
-            MoviNetBottleneck(in_channels=40,out_channels=40,expanded_channels=96,kernel_size=3,dropout=0.2,dilation=(2,1,1)),
-            #5
-            MoviNetBottleneck(in_channels=40,out_channels=72,expanded_channels=120,kernel_size=3,dilation=(2,1,1))
+            MoviNetBottleneck(16, 40, 96, kernel_size=(3,3,3), stride=(1,2,2), padding=(1,1,1)),
+            MoviNetBottleneck(40, 40, 120, kernel_size=(3,3,3), stride=(1,1,1), padding=(1,1,1)),
+            MoviNetBottleneck(40, 40, 96, kernel_size=(3,3,3), stride=(1,1,1), padding=(1,1,1)),
+            MoviNetBottleneck(40, 40, 96, kernel_size=(3,3,3), stride=(1,1,1), padding=(1,1,1)),
+            MoviNetBottleneck(40, 40, 120, kernel_size=(3,3,3), stride=(1,1,1), padding=(1,1,1))
         )
+        #block 4
         self.block4 = nn.Sequential(
-            #1
-            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=(5,3,3),stride=(1,2,2),padding_size=(2,1,1),dropout=0.2,dilation=(2,1,1)),
-            #2
-            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=155,kernel_size=3,dilation=(2,1,1)),
-            #3
-            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=3,dropout=0.2,dilation=(2,1,1)),
-            #4
-            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=192,kernel_size=3,dilation=(2,1,1)),
-            #5
-            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=3,dropout=0.2,dilation=(2,1,1))
+            MoviNetBottleneck(40, 72, 240, kernel_size=(5,3,3), stride=(1,2,2), padding=(2,1,1)),
+            MoviNetBottleneck(72, 72, 160, kernel_size=(3,3,3), stride=(1,1,1), padding=(1,1,1)),
+            MoviNetBottleneck(72, 72, 240, kernel_size=(3,3,3), stride=(1,1,1), padding=(1,1,1)),
+            MoviNetBottleneck(72, 72, 192, kernel_size=(3,3,3), stride=(1,1,1), padding=(1,1,1)),
+            MoviNetBottleneck(72, 72, 240, kernel_size=(3,3,3), stride=(1,1,1), padding=(1,1,1))
         )
+        #block 5
         self.block5 = nn.Sequential(
-            #1
-            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=(5,3,3),padding_size=(2,1,1),dropout=0.2,dilation=(2,1,1)),
-            #2
-            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=3,dilation=(2,1,1)),
-            #3
-            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=3,dropout=0.2,dilation=(2,1,1)),
-            #4
-            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=240,kernel_size=3,dilation=(2,1,1)),
-            #5 
-            MoviNetBottleneck(in_channels=72,out_channels=72,expanded_channels=144,kernel_size=(1,5,5)), #should be able to leave out stream buffer here
-            #6
-            MoviNetBottleneck(in_channels=72,out_channels=144,expanded_channels=240,kernel_size=3,dropout=0.2,dilation=(2,1,1))
+            MoviNetBottleneck(72, 72, 240, kernel_size=(5,3,3), stride=(1,1,1), padding=(2,1,1)),
+            MoviNetBottleneck(72, 72, 240, kernel_size=(3,3,3), stride=(1,1,1), padding=(1,1,1)),
+            MoviNetBottleneck(72, 72, 240, kernel_size=(3,3,3), stride=(1,1,1), padding=(1,1,1)),
+            MoviNetBottleneck(72, 72, 240, kernel_size=(3,3,3), stride=(1,1,1), padding=(1,1,1)),
+            MoviNetBottleneck(72, 72, 144, kernel_size=(1,5,5), stride=(1,1,1), padding=(0,2,2)),
+            MoviNetBottleneck(72, 72, 240, kernel_size=(3,3,3), stride=(1,1,1), padding=(1,1,1))
         )
-        
+        #block 6
         self.block6 = nn.Sequential(
-            #1
-            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=480,kernel_size=(5,3,3),stride=(1,2,2),padding_size=(2,1,1),dropout=0.2,dilation=(2,1,1)),
-            #2
-            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=384,kernel_size=(1,5,5)), #should be able to leave out stream buffer here
-            #3
-            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=384,kernel_size=(1,5,5),dropout=0.2), #should be able to leave out stream buffer here
-            #4
-            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=480,kernel_size=(1,5,5)), #should be able to leave out stream buffer here
-            #5
-            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=480,kernel_size=(1,5,5),dropout=0.2), #should be able to leave out stream buffer here
-            #6
-            MoviNetBottleneck(in_channels=144,out_channels=144,expanded_channels=480,kernel_size=3,dilation=(2,1,1)),
-            #7
-            MoviNetBottleneck(in_channels=144,out_channels=640,expanded_channels=576,kernel_size=(1,3,3),dropout=0.2) #should be able to leave out stream buffer here
+            MoviNetBottleneck(72 , 144, 480, kernel_size=(5,3,3), stride=(1,2,2), padding=(2,1,1)),
+            MoviNetBottleneck(144, 144, 384, kernel_size=(1,5,5), stride=(1,1,1), padding=(0,2,2)),
+            MoviNetBottleneck(144, 144, 384, kernel_size=(1,5,5), stride=(1,1,1), padding=(0,2,2)),
+            MoviNetBottleneck(144, 144, 480, kernel_size=(1,5,5), stride=(1,1,1), padding=(0,2,2)),
+            MoviNetBottleneck(144, 144, 480, kernel_size=(1,5,5), stride=(1,1,1), padding=(0,2,2)),
+            MoviNetBottleneck(144, 144, 480, kernel_size=(3,3,3), stride=(1,1,1), padding=(1,1,1)),
+            MoviNetBottleneck(144, 144, 576, kernel_size=(1,3,3), stride=(1,1,1), padding=(0,1,1))
         )
 
         self.conv = nn.Sequential(
-            CausalConv3d(in_channels=640,out_channels=640,kernel_size=1,bias=False),
+            nn.Conv3d(in_channels=144,out_channels=640,kernel_size=1,bias=False),
             nn.BatchNorm3d(640),
             nn.Hardswish(),
             nn.Dropout3d(0.2)
