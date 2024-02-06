@@ -41,9 +41,9 @@ def create_dataloader(dataloader,batch_size,mean,std):
 
         #dataset     
         train_dataset = PicklebotDataset(train_annotations_file,train_video_paths,transform=transform)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=24)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=32)
         val_dataset = PicklebotDataset(val_annotations_file,val_video_paths,transform=transform)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=24)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=32)
 
 
     elif dataloader == "dali":
@@ -198,7 +198,6 @@ def train(config, dataloader="torchvision"):
             accuracy_calc = calculate_accuracy_bce
     else:
         raise ValueError(f"Invalid model name: {model_name}")
-    model.to(dtype) 
     model.initialize_weights()
 
     if torch.cuda.device_count() > 1:
@@ -212,7 +211,7 @@ def train(config, dataloader="torchvision"):
     scheduler = CosineAnnealingLR(optimizer,T_max=max_iters)
 
     #create loss function
-    valid_losses = {"CE":nn.CrossEntropyLoss(weight=torch.tensor([1.0,1.5])),"BCE":nn.BCEWithLogitsLoss()}
+    valid_losses = {"CE":nn.CrossEntropyLoss(weight=torch.tensor([1.0,1.5],device=device)),"BCE":nn.BCEWithLogitsLoss()}
     if criterion in valid_losses:
         criterion = valid_losses[criterion]        
 
