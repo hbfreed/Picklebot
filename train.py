@@ -41,9 +41,9 @@ def create_dataloader(dataloader,batch_size,mean,std):
 
         #dataset     
         train_dataset = PicklebotDataset(train_annotations_file,train_video_paths,transform=transform)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=32)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=42)
         val_dataset = PicklebotDataset(val_annotations_file,val_video_paths,transform=transform)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=32)
+        val_loader = DataLoader(val_dataset, batch_size=8,shuffle=True,collate_fn=custom_collate,num_workers=42)
 
 
     elif dataloader == "dali":
@@ -139,7 +139,7 @@ def extract_features_labels(output,dataloader):
     return features,labels
 
 @torch.no_grad()
-def estimate_loss(model,val_loader,criterion,dataloader):
+def estimate_loss(model,val_loader,criterion,dataloader,use_autocast):
     print("Evaluating...")
     model.eval()
     if str(criterion) == "CrossEntropyLoss()":
@@ -151,12 +151,21 @@ def estimate_loss(model,val_loader,criterion,dataloader):
     val_loss = 0
     for batch_idx, output in tqdm(enumerate(val_loader)):
         features,labels = extract_features_labels(output,dataloader)
-        outputs = model(features)
-        if str(criterion) == "CrossEntropyLoss()":
-            labels = labels.to(torch.long).squeeze(1)
-        val_correct += accuracy_calc(outputs,labels)
-        val_samples += labels.size(0)
-        val_loss += criterion(outputs,labels).item()
+        if use_autocast:
+            with autocast(dtype=dtype):
+                outputs = model(features)
+                if str(criterion) == "CrossEntropyLoss()":
+                    labels = labels.to(torch.long).squeeze(1)
+                val_correct += accuracy_calc(outputs,labels)
+                val_samples += labels.size(0)
+                val_loss += criterion(outputs,labels).item()
+        else:
+            outputs = model(features)
+            if str(criterion) == "CrossEntropyLoss()":
+                labels = labels.to(torch.long).squeeze(1)
+            val_correct += accuracy_calc(outputs,labels)
+            val_samples += labels.size(0)
+            val_loss += criterion(outputs,labels).item()
     val_loss /= len(val_loader)
     val_accuracy = val_correct/val_samples
     return val_loss, val_accuracy
@@ -253,7 +262,7 @@ def train(config, dataloader="torchvision"):
     train_percent = torch.tensor([])
     val_losses = []
     val_percent = []
-
+    
     try:
         for iter in range(max_iters):
             model.train()
@@ -305,7 +314,7 @@ def train(config, dataloader="torchvision"):
             estimated_remaining_time = remaining_iters * avg_time_per_iter
 
             if iter % eval_interval == 0 or iter == max_iters - 1:
-                val_loss, val_accuracy = estimate_loss(model,val_loader,criterion,dataloader=dataloader)
+                val_loss, val_accuracy = estimate_loss(model,val_loader,criterion,use_autocast=use_autocast,dataloader=dataloader)
                 val_losses.append(val_loss)
                 val_percent.append(val_accuracy)
 
