@@ -21,6 +21,14 @@ from helpers import calculate_accuracy_bce, average_for_plotting, calculate_accu
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 dtype = torch.bfloat16 if device == 'cuda' else torch.float16 
 
+def state_dict_converter(state_dict):
+    for key in list(state_dict.keys()):
+        if key.startswith("_orig_mod."):
+            new_key = key.replace("_orig_mod.", "")
+            state_dict[new_key] = state_dict[key]
+            del state_dict[key]
+    return state_dict
+
 def create_dataloader(dataloader,batch_size,mean,std):
     #create dataloader
     if dataloader == "torchvision":
@@ -40,10 +48,10 @@ def create_dataloader(dataloader,batch_size,mean,std):
         transform = transforms.Normalize(mean,std)
 
         #dataset     
-        train_dataset = PicklebotDataset(train_annotations_file,train_video_paths,transform=transform)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=42)
-        val_dataset = PicklebotDataset(val_annotations_file,val_video_paths,transform=transform)
-        val_loader = DataLoader(val_dataset, batch_size=8,shuffle=True,collate_fn=custom_collate,num_workers=42)
+        train_dataset = PicklebotDataset(train_annotations_file,train_video_paths,transform=transform,dtype=dtype)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=24)
+        val_dataset = PicklebotDataset(val_annotations_file,val_video_paths,transform=transform,dtype=dtype)
+        val_loader = DataLoader(val_dataset, batch_size=8,shuffle=True,collate_fn=custom_collate,num_workers=24)
 
 
     elif dataloader == "dali":
@@ -238,8 +246,8 @@ def train(config, dataloader="torchvision"):
     if checkpoint is not None:
         print("Loading checkpoint...")
         checkpoint = torch.load(checkpoint)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        start_epoch = checkpoint["epoch"]
+        model.load_state_dict(checkpoint)
+        start_epoch = 31
         print(f"Loaded checkpoint at epoch {start_epoch}")
 
     #compile the model

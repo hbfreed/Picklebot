@@ -26,19 +26,19 @@ def custom_collate(batch): #this custom collate pads our batch.
 
 
 class PicklebotDataset(Dataset):
-    def __init__(self, annotations_file, video_dir, transform=None,target_transform=None):
+    def __init__(self, annotations_file, video_dir, transform=None,target_transform=None,dtype=torch.float32):
         self.video_labels = pd.read_csv(annotations_file,engine='pyarrow',header=None)
         self.video_dir = video_dir
         self.transform = transform
         self.target_transform = target_transform
+        self.dtype = dtype
 
     def __len__(self):
         return len(self.video_labels)
         
     def __getitem__(self,idx):
-        dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
         video_path = os.path.join(self.video_dir, self.video_labels.iloc[idx,0])
-        video = (read_video(video_path,output_format="TCHW",pts_unit='sec')[0]/255).to(dtype=dtype)
+        video = ((read_video(video_path,output_format="TCHW",pts_unit='sec')[0]).to(self.dtype))/255
         label = self.video_labels.iloc[idx,1]
         if self.transform:
             video = self.transform(video)
