@@ -7,3 +7,6 @@ See the demo on [huggingface](https://huggingface.co/spaces/hbfreed/picklebot_de
 
 ## Dataset
 See the Picklebot dataset on [huggingface](https://huggingface.co/datasets/hbfreed/Picklebot-50K).
+
+## What's in the pipeline?
+Soon, training will start on some subset of [Picklebot-2M](https://huggingface.co/datasets/hbfreed/Picklebot-2M). With the new dataset, we will be able to do more granular classification for the pitches, like pitch location or type of pitch (fourseam fastball, curveball, etc.). 
