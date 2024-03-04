@@ -7,21 +7,34 @@ import torch.nn.functional as F
 
 '''Strikes are 1, balls are 2'''
 
-def pad_batch(video,pad):
-        video = video.transpose(0,-1)
-        video = F.pad(video,(0,pad),value=0) #pad T with zeros
-        video = video.permute(1,-1,2,0) #switch back, want channels to be first, so with batches, N,C,T,H,W
-        return video
-
-def custom_collate(batch): #this custom collate pads our batch.
-    padded_batch = torch.tensor([])
-    labels = torch.tensor([])
-    max_length = max(video[0].shape[0] for video in batch)
-    for video in batch:
-        padded = pad_batch(video[0], max_length - video[0].shape[0])
-        padded_batch = torch.cat((padded_batch, padded.unsqueeze(0)), dim=0)
-        labels = torch.cat((labels, torch.tensor([video[1]])), dim=0)
-
+def custom_collate(batch):
+    # Find the maximum length of the videos in the batch
+    max_length = max(video.shape[0] for video, _ in batch)
+    # Create a list for the padded videos and labels
+    padded_batch_list = []
+    labels = []
+    
+    # Iterate over the batch to pad each video
+    for video, label in batch:
+        # Calculate the necessary padding for the temporal dimension
+        pad_size = max_length - video.shape[0]
+        
+        # Pad the temporal dimension (T) of the video
+        # Note: video is expected to be in TCHW format
+        padded_video = F.pad(video, (0, 0, 0, 0, 0, 0,0, pad_size), value=0)
+        
+        # Add the padded video to the list
+        padded_batch_list.append(padded_video)
+        
+        # Add the label to the list
+        labels.append(label)
+    
+    # Stack the padded videos along a new dimension (batch dimension)
+    padded_batch = torch.stack(padded_batch_list)
+    
+    # Convert the list of labels to a tensor
+    labels = torch.tensor(labels, dtype=torch.long)
+    
     return padded_batch, labels
 
 
