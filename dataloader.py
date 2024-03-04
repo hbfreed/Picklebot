@@ -35,7 +35,7 @@ def custom_collate(batch):
     # Convert the list of labels to a tensor
     labels = torch.tensor(labels, dtype=torch.long)
     
-    return padded_batch, labels
+    return padded_batch.transpose(1,2), labels
 
 
 class PicklebotDataset(Dataset):
