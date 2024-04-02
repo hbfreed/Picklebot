@@ -5,12 +5,12 @@ import torch.nn.functional as F
 # import amd.rocal.fn as fn 
 # from amd.rocal.pipeline import pipeline_def
 
-#calculate the accuracy of the model, 
-def calculate_accuracy(outputs,labels):
-    outputs = F.softmax(outputs,dim=1)
-    predicted_classes = torch.argmax(outputs,dim=1).to(labels.device)
-    num_correct = torch.sum(predicted_classes == labels).item()
-    return num_correct
+#calculate the accuracy of the model
+@torch.no_grad()
+def calculate_accuracy(outputs, labels):
+    _, preds = torch.max(outputs, dim=1)
+    correct = torch.sum(preds == labels)
+    return correct
 
 #calculate the loss of the model, averaging every window_size batches
 def average_for_plotting(loss_list,window_size=1000):

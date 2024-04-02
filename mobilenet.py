@@ -45,7 +45,19 @@ class SEBlock2D(nn.Module):
 
 #Bottleneck for Mobilenets
 class Bottleneck3D(nn.Module):
-    def __init__(self, in_channels, out_channels, expanded_channels, stride=1, use_se=False, kernel_size=3,nonlinearity=nn.Hardswish(),batchnorm=True,dropout=0,bias=False):
+    def __init__(
+            self,
+            in_channels: int,
+            out_channels: int,
+            expanded_channels: int,
+            stride: int = 1,
+            use_se: bool = False,
+            kernel_size:int = 3,
+            nonlinearity=nn.Hardswish(),
+            batchnorm: bool = True,
+            dropout: float = 0,
+            bias: bool = False   
+    ):
         super().__init__()
 
         #pointwise conv1x1x1 (reduce channels)

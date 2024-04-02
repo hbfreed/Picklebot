@@ -11,12 +11,14 @@ import torch.optim as optim
 from torch.cuda.amp import GradScaler, autocast
 from tqdm import tqdm
 from psutil import cpu_count
-from torchvision import transforms
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 from mobilenet import MobileNetSmall3D,MobileNetLarge3D
 from movinet import MoViNetA2
 from helpers import calculate_accuracy_bce, average_for_plotting, calculate_accuracy
+#classification 0 is zone 1, classification 1 is zone 2, etc.
+#additionally,
+
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 dtype = torch.bfloat16 if device == 'cuda' else torch.float16 
@@ -34,24 +36,25 @@ def create_dataloader(dataloader,batch_size,mean,std):
     if dataloader == "torchvision":
         from torch.utils.data import DataLoader
         from dataloader import PicklebotDataset, custom_collate
+        from torchvision import transforms
 
         #annotations paths
-        train_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/train_labels.csv'
-        val_annotations_file = '/home/henry/Documents/PythonProjects/picklebotdataset/val_labels.csv'
+        train_annotations_file = '/home/henry/Documents/PythonProjects/picklebot_2m/picklebot_130k_train.csv'
+        val_annotations_file = '/home/henry/Documents/PythonProjects/picklebot_2m/picklebot_130k_val.csv'
 
         #video paths
-        train_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/train_all_together'
-        val_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/val_all_together'
+        video_paths = '/home/henry/Documents/PythonProjects/picklebot_2m/picklebot_130k_all_together'
+        
 
         #establish our normalization using transforms, 
         #note that we are doing this in our dataloader as opposed to in the training loop like with dali
         transform = transforms.Normalize(mean,std)
 
         #dataset     
-        train_dataset = PicklebotDataset(train_annotations_file,train_video_paths,transform=transform,dtype=dtype)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=24,pin_memory=True) #pin memory should help with speed
-        val_dataset = PicklebotDataset(val_annotations_file,val_video_paths,transform=transform,dtype=dtype)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=True,collate_fn=custom_collate,num_workers=24,pin_memory=True)
+        train_dataset = PicklebotDataset(train_annotations_file,video_paths,dtype=dtype) #may want to add transform=transform back
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=False,collate_fn=custom_collate,num_workers=36,pin_memory=False) #pin memory should help with speed
+        val_dataset = PicklebotDataset(val_annotations_file,video_paths,dtype=dtype) #may want to add transform=transform back
+        val_loader = DataLoader(val_dataset, batch_size=batch_size//2,shuffle=False,collate_fn=custom_collate,num_workers=36,pin_memory=False)
 
 
     elif dataloader == "dali":
@@ -157,7 +160,7 @@ def estimate_loss(model,val_loader,criterion,dataloader,use_autocast):
     val_correct = 0
     val_samples = 0
     val_loss = 0
-    for batch_idx, output in tqdm(enumerate(val_loader)):
+    for output in tqdm(val_loader):
         features,labels = extract_features_labels(output,dataloader)
         if use_autocast:
             with autocast(dtype=dtype):
@@ -208,7 +211,7 @@ def train(config, dataloader="torchvision"):
 
     if model_name in valid_models:
         if criterion == "CE":
-            model = valid_models[model_name](num_classes=2).to(device)
+            model = valid_models[model_name](num_classes=13).to(device)
             accuracy_calc = calculate_accuracy
         elif criterion == "BCE":
             model = valid_models[model_name](num_classes=1).to(device)
@@ -228,7 +231,7 @@ def train(config, dataloader="torchvision"):
     scheduler = CosineAnnealingLR(optimizer,T_max=max_iters)
 
     #create loss function
-    valid_losses = {"CE":nn.CrossEntropyLoss(weight=torch.tensor([1.0,1.5],device=device)),"BCE":nn.BCEWithLogitsLoss()}
+    valid_losses = {"CE":nn.CrossEntropyLoss(),"BCE":nn.BCEWithLogitsLoss()}
     if criterion in valid_losses:
         criterion = valid_losses[criterion]        
 

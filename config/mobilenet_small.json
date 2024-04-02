@@ -1,7 +1,7 @@
 {
 "model_name" : "MobileNetSmall3D",
-"learning_rate": 3e-4,
-"batch_size": 12,
+"learning_rate": 5e-4,
+"batch_size": 16,
 "max_iters": 100,
 "eval_interval": 1,
 "weight_decay": 5e-4,
@@ -10,5 +10,5 @@
 "use_autocast": true, 
 "compile": false,
 "criterion": "CE",
-"checkpoint": "/home/henry/Documents/PythonProjects/Picklebot/checkpoints/MobileNetSmall3D31.pth" 
+"checkpoint": null 
 }
