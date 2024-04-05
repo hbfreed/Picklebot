@@ -52,9 +52,9 @@ def create_dataloader(dataloader,batch_size,mean,std):
 
         #dataset     
         train_dataset = PicklebotDataset(train_annotations_file,video_paths,dtype=dtype) #may want to add transform=transform back
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=False,collate_fn=custom_collate,num_workers=36,pin_memory=False) #pin memory should help with speed
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=False,collate_fn=custom_collate,num_workers=24,pin_memory=True) #pin memory should help with speed
         val_dataset = PicklebotDataset(val_annotations_file,video_paths,dtype=dtype) #may want to add transform=transform back
-        val_loader = DataLoader(val_dataset, batch_size=batch_size//2,shuffle=False,collate_fn=custom_collate,num_workers=36,pin_memory=False)
+        val_loader = DataLoader(val_dataset, batch_size=1,shuffle=False,collate_fn=custom_collate,num_workers=1,pin_memory=False)
 
 
     elif dataloader == "dali":

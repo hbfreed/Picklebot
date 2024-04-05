@@ -8,7 +8,7 @@
 "std": [0.2104, 0.1986, 0.1829],
 "mean": [0.3939, 0.3817, 0.3314],
 "use_autocast": true, 
-"compile": false,
+"compile": true,
 "criterion": "CE",
 "checkpoint": null 
 }
