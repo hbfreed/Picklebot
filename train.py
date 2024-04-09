@@ -36,7 +36,7 @@ def create_dataloader(dataloader,batch_size,mean,std):
     if dataloader == "torchvision":
         from torch.utils.data import DataLoader
         from dataloader import PicklebotDataset, custom_collate
-        from torchvision import transforms
+        #from torchvision import transforms
 
         #annotations paths
         train_annotations_file = '/home/henry/Documents/PythonProjects/picklebot_2m/picklebot_130k_train.csv'
@@ -48,13 +48,13 @@ def create_dataloader(dataloader,batch_size,mean,std):
 
         #establish our normalization using transforms, 
         #note that we are doing this in our dataloader as opposed to in the training loop like with dali
-        transform = transforms.Normalize(mean,std)
+        #transform = transforms.Normalize(mean,std)
 
         #dataset     
-        train_dataset = PicklebotDataset(train_annotations_file,video_paths,dtype=dtype) #may want to add transform=transform back
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=False,collate_fn=custom_collate,num_workers=24,pin_memory=True) #pin memory should help with speed
-        val_dataset = PicklebotDataset(val_annotations_file,video_paths,dtype=dtype) #may want to add transform=transform back
-        val_loader = DataLoader(val_dataset, batch_size=1,shuffle=False,collate_fn=custom_collate,num_workers=1,pin_memory=False)
+        train_dataset = PicklebotDataset(train_annotations_file,video_paths,dtype=dtype,backend='opencv') #may want to add transform=transform back
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=False,collate_fn=custom_collate,num_workers=8,pin_memory=True) #pin memory keeps using too much memory
+        val_dataset = PicklebotDataset(val_annotations_file,video_paths,dtype=dtype,backend='opencv') #may want to add transform=transform back
+        val_loader = DataLoader(val_dataset, batch_size=8,shuffle=False,collate_fn=custom_collate,num_workers=4,pin_memory=True)
 
 
     elif dataloader == "dali":
@@ -138,14 +138,14 @@ def load_config(config_path):
 
 def extract_features_labels(output,dataloader):
     if dataloader == "torchvision":
-        features = output[0].to(dtype).to(device)
-        labels = output[1].unsqueeze(1).to(device)
+        features = output[0].to(dtype).to(device,non_blocking=True)
+        labels = output[1].unsqueeze(1).to(device,non_blocking=True)
 
     elif dataloader == "dali":
-        features = output[0]["data"].float().to(device)
+        features = output[0]["data"].float().to(device,non_blocking=True)
         features = features/255 #normalize to 0-1
         features = features.permute(0,-1,1,2,3) #move channels to front
-        labels = output[0]["label"].to(device)
+        labels = output[0]["label"].to(device,non_blocking=True)
         labels = labels.float()
     return features,labels
 

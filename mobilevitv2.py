@@ -4,6 +4,8 @@ import torch.nn.functional as F
 from mobilenet import Bottleneck3D, Bottleneck2D #for the MobileNetV2 bottleneck blocks, which are used in the MobileViTV1 architecture. We use blocks from Mobilenet V3.
 from typing import Optional, Tuple, Union
 
+'''Put together with a lot of help and inspiration from the huggingface implementation and lucidrains (https://github.com/lucidrains/vit-pytorch/)'''
+
 class LinearSelfAttention(nn.Module): 
     def __init__(self, embed_dim: int, dropout: float = 0.0) -> None:
         super().__init__()

@@ -1,4 +1,5 @@
-from mobilevit import MobileViTV2
+from mobilevitv2 import MobileViTV2
+from mobilevitv1 import MobileViTV1
 import torch
 from torch.utils.data import DataLoader
 from datasets import load_dataset
@@ -9,7 +10,7 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 
 # Define the image transformations
 transform = transforms.Compose([
-    transforms.Resize((224, 224)),  # Resize the images to a consistent size
+    transforms.Resize((256, 256)),  # Resize the images to a consistent size
     transforms.ToTensor(),  # Convert the images to tensors
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Normalize the image tensors
 ])
@@ -28,7 +29,12 @@ val_dataset.set_transform(transform_images)
 
 # Initialize the model, loss function, and optimizer
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = MobileViTV2().to(device)
+model = MobileViTV1(
+    image_size=(256,256),
+    dims=[96,120,144],
+    channels=[16, 32, 48, 48, 64, 64, 80, 80, 96, 96, 384],
+    num_classes=1000
+    ).to(device)
 model = model.to(torch.bfloat16)
 criterion = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
@@ -38,8 +44,8 @@ scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=0)
 
 # Create data loaders
 batch_size = 64 
-train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=lambda x: x,num_workers=42,pin_memory=True)
-val_loader = DataLoader(val_dataset, batch_size=batch_size, collate_fn=lambda x: x,num_workers=42,pin_memory=True)
+train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=lambda x: x,num_workers=24,pin_memory=True)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, collate_fn=lambda x: x,num_workers=24,pin_memory=True)
 print('starting training...')
 # Training loop
 for epoch in range(num_epochs):

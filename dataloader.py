@@ -14,7 +14,6 @@ def custom_collate(batch):
     padded_videos = []
     for video in videos:
         pad_size = max_length - video.shape[0]
-        print('pad_size:',pad_size)
         padded_video = F.pad(video,(0,0,0,0,0,0,0,pad_size),value=0) #(T, C, H, W) padded to the length of the longest video
         padded_videos.append(padded_video)
     
