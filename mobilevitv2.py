@@ -269,7 +269,7 @@ class MobileViTV2(nn.Module):
         self.bn2 = Bottleneck2D(in_channels=64,out_channels=128,expanded_channels=64*expand_ratio,stride=2) #downsample here, should be image_size//4 x image_size//4 x 128\alpha
         self.bn3 = Bottleneck2D(in_channels=128,out_channels=128,expanded_channels=128*expand_ratio) #no downsample, should be image_size//4 x image_size//4 x 128\alpha
         self.bn3_5 = Bottleneck2D(in_channels=128,out_channels=128,expanded_channels=128*expand_ratio) #repeat the above here
-
+        
         self.transformer1 = MobileViTV2Layer(in_channels=128,out_channels=256,attn_unit_dim=128,n_attn_blocks=2) #want B=2, so repeat the attention and ffw layers twice, d=128 \alpha
         
         self.transformer2 = MobileViTV2Layer(in_channels=256,out_channels=384,attn_unit_dim=192,n_attn_blocks=4) #B=4, so repeat the attention and ffw layers four times, d = 192\alpha
@@ -286,6 +286,7 @@ class MobileViTV2(nn.Module):
         x = self.bn2(x)
         x = self.bn3(x)
         x = self.bn3_5(x)
+        print(f"shape after bottleneck 3.5: {x.shape}")
 
         x = self.transformer1(x)
 

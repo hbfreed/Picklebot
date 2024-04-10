@@ -1,5 +1,5 @@
 from mobilevitv2 import MobileViTV2
-from mobilevitv1 import MobileViTV1
+from mobilevit import MobileViTV1
 import torch
 from torch.utils.data import DataLoader
 from datasets import load_dataset
@@ -43,7 +43,7 @@ num_epochs = 50
 scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=0)
 
 # Create data loaders
-batch_size = 64 
+batch_size = 128
 train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=lambda x: x,num_workers=24,pin_memory=True)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, collate_fn=lambda x: x,num_workers=24,pin_memory=True)
 print('starting training...')
