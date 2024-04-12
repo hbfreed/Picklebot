@@ -12,7 +12,7 @@ class LinearSelfAttention(nn.Module):
         
         self.qkv_proj = nn.Conv2d(
             in_channels=embed_dim,
-            out_channels=1 + (2 * embed_dim),
+            out_channels=1 + (2 * embed_dim), #q is a vector for each patch position, so 1, k is a matrix, v is a matrix
             bias=True,
             kernel_size=1
         )
@@ -27,12 +27,15 @@ class LinearSelfAttention(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         # (batch_size, embed_dim, num_pixels_in_patch, num_patches) -> (batch_size, 1+2*embed_dim, num_pixels_in_patch, num_patches)
+        print(f"pre qkv, Linear: {hidden_states.shape}")
         qkv = self.qkv_proj(hidden_states)
+        print(f"post qkv, Linear: {qkv.shape}")
 
         #project the hidden states into q,k,v
         #q -> (batch_size, 1, num_pixels_in_patch, num_patches)
         # v,k -> (batch_size, embed_dim, num_pixels_in_patch, num_patches)
         query, key, value = torch.split(qkv, split_size_or_sections=[1, self.embed_dim, self.embed_dim], dim=1)
+        print(f"query shape: {query.shape}, key shape: {key.shape}, value shape: {value.shape}")
 
         #softmax
         context_scores = F.softmax(query, dim=-1)
@@ -67,6 +70,7 @@ class MobileViTV2FFN(nn.Module): #source is from the huggingface implementation 
             stride=1,
             bias=True,
         )
+        self.activation = nn.SiLU()
         self.dropout1 = nn.Dropout(dropout)
 
         self.conv2 = nn.Conv2d(
@@ -80,6 +84,7 @@ class MobileViTV2FFN(nn.Module): #source is from the huggingface implementation 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv1(x)
+        x = self.activation(x)
         x = self.dropout1(x)
         x = self.conv2(x)
         x = self.dropout2(x)

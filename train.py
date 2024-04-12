@@ -52,7 +52,7 @@ def create_dataloader(dataloader,batch_size,mean,std):
 
         #dataset     
         train_dataset = PicklebotDataset(train_annotations_file,video_paths,dtype=dtype,backend='opencv') #may want to add transform=transform back
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=False,collate_fn=custom_collate,num_workers=8,pin_memory=True) #pin memory keeps using too much memory
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=False,collate_fn=custom_collate,num_workers=8,pin_memory=True) 
         val_dataset = PicklebotDataset(val_annotations_file,video_paths,dtype=dtype,backend='opencv') #may want to add transform=transform back
         val_loader = DataLoader(val_dataset, batch_size=8,shuffle=False,collate_fn=custom_collate,num_workers=4,pin_memory=True)
 
@@ -138,7 +138,7 @@ def load_config(config_path):
 
 def extract_features_labels(output,dataloader):
     if dataloader == "torchvision":
-        features = output[0].to(dtype).to(device,non_blocking=True)
+        features = output[0].to(device,non_blocking=True).permute(0,1,4,2,3).to(torch.bfloat16) / 255 #doing these operations on the gpu makes loading 2x faster!
         labels = output[1].unsqueeze(1).to(device,non_blocking=True)
 
     elif dataloader == "dali":
