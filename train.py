@@ -17,7 +17,6 @@ from mobilenet import MobileNetSmall3D,MobileNetLarge3D
 from movinet import MoViNetA2
 from helpers import calculate_accuracy_bce, average_for_plotting, calculate_accuracy
 #classification 0 is zone 1, classification 1 is zone 2, etc.
-#additionally,
 
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -52,9 +51,9 @@ def create_dataloader(dataloader,batch_size,mean,std):
 
         #dataset     
         train_dataset = PicklebotDataset(train_annotations_file,video_paths,dtype=dtype,backend='opencv') #may want to add transform=transform back
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=False,collate_fn=custom_collate,num_workers=8,pin_memory=True) 
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=False,collate_fn=custom_collate,num_workers=16,pin_memory=True) 
         val_dataset = PicklebotDataset(val_annotations_file,video_paths,dtype=dtype,backend='opencv') #may want to add transform=transform back
-        val_loader = DataLoader(val_dataset, batch_size=8,shuffle=False,collate_fn=custom_collate,num_workers=4,pin_memory=True)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=False,collate_fn=custom_collate,num_workers=16,pin_memory=True)
 
 
     elif dataloader == "dali":
@@ -138,7 +137,7 @@ def load_config(config_path):
 
 def extract_features_labels(output,dataloader):
     if dataloader == "torchvision":
-        features = output[0].to(device,non_blocking=True).permute(0,1,4,2,3).to(torch.bfloat16) / 255 #doing these operations on the gpu makes loading 2x faster!
+        features = output[0].to(device,non_blocking=True).permute(0,-1,1,2,3).to(torch.bfloat16) / 255 #doing these operations on the gpu makes loading 2x faster, investigating if we're better off doing this on the cpu to keep the gpu working on the model
         labels = output[1].unsqueeze(1).to(device,non_blocking=True)
 
     elif dataloader == "dali":
@@ -211,10 +210,10 @@ def train(config, dataloader="torchvision"):
 
     if model_name in valid_models:
         if criterion == "CE":
-            model = valid_models[model_name](num_classes=13).to(device)
+            model = valid_models[model_name](num_classes=13).to(device,non_blocking=True)
             accuracy_calc = calculate_accuracy
         elif criterion == "BCE":
-            model = valid_models[model_name](num_classes=1).to(device)
+            model = valid_models[model_name](num_classes=1).to(device,non_blocking=True)
             accuracy_calc = calculate_accuracy_bce
     else:
         raise ValueError(f"Invalid model name: {model_name}")
@@ -250,14 +249,14 @@ def train(config, dataloader="torchvision"):
         print("Loading checkpoint...")
         checkpoint = torch.load(checkpoint)
         model.load_state_dict(checkpoint)
-        start_epoch = 31
+        start_epoch = checkpoint["epoch"]
         print(f"Loaded checkpoint at epoch {start_epoch}")
 
     #compile the model
     if compile:
         print("Compiling the model... (takes a ~minute)")
         unoptimized_model = model
-        model = torch.compile(model)  # requires PyTorch 2 and a modern gpu (seems like mostly V/A/H 100s work best), 
+        model = torch.compile(model)  # requires PyTorch 2 and a modern gpu (seems like mostly V/A/H 100s work best, but it absolutely speeds up my 7900xtx)
         print("Compilation complete!")
     
     #create dataloader
@@ -359,8 +358,9 @@ def train(config, dataloader="torchvision"):
         with open(f'statistics/{run_name}_finished_train_percent.npy', 'wb') as f:
             np.save(f, train_percent.numpy())
         with open(f'statistics/{run_name}_finished_val_percent.npy', 'wb') as f:
-            np.save(f, np.array(val_percent))
+            np.save(f, np.array(val_percent.cpu()))
         print(f"Model and statistics saved!")
+
 
 if __name__ == "__main__":
 
@@ -373,4 +373,22 @@ if __name__ == "__main__":
         dataloader = args.dataloader
     else:
         dataloader = "torchvision"
-    train(config,dataloader)
+    
+    def profile():
+        train(config,dataloader)
+
+    import cProfile
+    profiler = cProfile.Profile()
+    profiler.runcall(profile)
+
+    import pstats
+    from pstats import SortKey
+
+    stats = pstats.Stats(profiler)
+    stats.sort_stats(SortKey.TIME)  # Sort by time
+    stats.dump_stats('train_stats.prof')
+
+
+
+#operations like /255 on cpu: 6483it [54:11,  1.99it/s]
+#operations like /255 on gpu: 

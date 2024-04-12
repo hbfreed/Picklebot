@@ -100,8 +100,9 @@ class MobileViTBlock(nn.Module):
         self.conv1 = conv_nxn_bn(channel, channel, kernel_size)
         self.conv2 = conv_1x1_bn(channel, embed_dim)
 
-        self.transformer = Transformer(embed_dim, depth, 4, 8, ffw_dim, dropout)
+        #vivit 
 
+        self.transformer = Transformer(embed_dim, depth, 4, 8, ffw_dim, dropout)
 
         self.conv3 = conv_1x1_bn(embed_dim, channel)
         self.conv4 = conv_nxn_bn(2*channel, channel, kernel_size)
@@ -181,10 +182,10 @@ class MobileViT(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x  = self.conv1(x)
 
-        for i,conv in enumerate(self.stem):
+        for conv in self.stem:
             x = conv(x)
 
-        for i,(conv, attn) in enumerate(self.trunk):
+        for conv, attn in self.trunk:
             x = conv(x)
             x = attn(x)
 

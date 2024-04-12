@@ -4,14 +4,12 @@ import torch
 from torch.utils.data import Dataset
 import torch.nn.functional as F
 from torchvision.io import read_video
-import ffmpeg
 import cv2
 
 
 def custom_collate(batch):
-    videos,labels,length = zip(*batch)
+    videos,labels= zip(*batch)
     max_length = max(video.shape[0] for video in videos)
-    # max_length = max(lengths)
 
     padded_videos = []
     for video in videos:
@@ -19,7 +17,7 @@ def custom_collate(batch):
         padded_video = F.pad(video,(0,0,0,0,0,0,0,pad_size),value=0) #(T, H, W, C) padded to the length of the longest video
         padded_videos.append(padded_video)
     
-    padded_batch = torch.stack(padded_videos)#(B, T, H, W, C) we want to do most operations on the gpu, so permute later
+    padded_batch = torch.stack(padded_videos) #(B, T, H, W, C) we want to do most operations on the gpu, so permute later
     labels = torch.tensor(labels,dtype=torch.long)
 
     return padded_batch, labels
@@ -52,15 +50,14 @@ class PicklebotDataset(Dataset):
                 if not ret:
                     break
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frame = torch.from_numpy(frame).permute(2, 0, 1).to(self.dtype) / 255
+                frame = torch.from_numpy(frame)
                 frames.append(frame)
             cap.release()
             video = torch.stack(frames)
 
         label = self.video_labels["zone"][idx]
-        length = self.video_labels["video_length"][idx]
         if self.transform:
             video = self.transform(video)
         if self.target_transform:
             label = self.target_transform(label)
-        return video, label, length
+        return video, label
