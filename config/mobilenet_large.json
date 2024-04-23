@@ -1,6 +1,6 @@
 {
 "model_name" : "MobileNetLarge3D",
-"learning_rate": 3e-4,
+"learning_rate": 1e-3,
 "batch_size": 16,
 "max_iters": 100,
 "eval_interval": 1,
@@ -10,5 +10,5 @@
 "use_autocast": true,
 "compile": true,
 "criterion": "CE",
-"checkpoint": null
+"checkpoint": "/home/henry/Documents/PythonProjects/Picklebot/checkpoints/restart_training_step_30.pth" 
 }

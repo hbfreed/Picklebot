@@ -8,6 +8,7 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from decimal import Decimal
 from torch.cuda.amp import GradScaler, autocast
 from tqdm import tqdm
 from psutil import cpu_count
@@ -15,6 +16,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 from mobilenet import MobileNetSmall3D,MobileNetLarge3D
 from movinet import MoViNetA2
+from mobilevit import MobileViT
 from helpers import calculate_accuracy_bce, average_for_plotting, calculate_accuracy
 #classification 0 is zone 1, classification 1 is zone 2, etc.
 
@@ -206,15 +208,18 @@ def train(config, dataloader="torchvision"):
     print(f"Training model: {model_name} Using device: {device} with dtype: {dtype}")
 
     #create model
-    valid_models = {"MoViNetA2":MoViNetA2,"MobileNetLarge3D":MobileNetLarge3D,"MobileNetSmall3D":MobileNetSmall3D}
+    valid_models = {"MoViNetA2":MoViNetA2,"MobileNetLarge3D":MobileNetLarge3D,"MobileNetSmall3D":MobileNetSmall3D,"MobileViT":MobileViT}
 
     if model_name in valid_models:
-        if criterion == "CE":
+        if model_name == "MobileViT":
+            dims = config["dims"]
+            channels = config["channels"]
+            model = valid_models[model_name](dims=dims,channels=channels,num_classes=13).to(device,non_blocking=True)
+            accuracy_calc = calculate_accuracy
+        else:
             model = valid_models[model_name](num_classes=13).to(device,non_blocking=True)
             accuracy_calc = calculate_accuracy
-        elif criterion == "BCE":
-            model = valid_models[model_name](num_classes=1).to(device,non_blocking=True)
-            accuracy_calc = calculate_accuracy_bce
+        
     else:
         raise ValueError(f"Invalid model name: {model_name}")
     model.initialize_weights()
@@ -227,7 +232,8 @@ def train(config, dataloader="torchvision"):
     optimizer = optim.AdamW(model.parameters(),lr=learning_rate,weight_decay=weight_decay)
 
     #create scheduler
-    scheduler = CosineAnnealingLR(optimizer,T_max=max_iters)
+    eta_min = float(Decimal(str(learning_rate))/Decimal('10')) #lr/10
+    scheduler = CosineAnnealingLR(optimizer,T_max=max_iters,eta_min=eta_min)
 
     #create loss function
     valid_losses = {"CE":nn.CrossEntropyLoss(),"BCE":nn.BCEWithLogitsLoss()}
@@ -249,18 +255,18 @@ def train(config, dataloader="torchvision"):
         print("Loading checkpoint...")
         checkpoint = torch.load(checkpoint)
         model.load_state_dict(checkpoint)
-        start_epoch = checkpoint["epoch"]
+        start_epoch = checkpoint[-2]
         print(f"Loaded checkpoint at epoch {start_epoch}")
 
+    #create dataloader
+    train_loader, val_loader = create_dataloader(dataloader,batch_size,mean,std)
+    
     #compile the model
     if compile:
         print("Compiling the model... (takes a ~minute)")
-        unoptimized_model = model
         model = torch.compile(model)  # requires PyTorch 2 and a modern gpu (seems like mostly V/A/H 100s work best, but it absolutely speeds up my 7900xtx)
         print("Compilation complete!")
     
-    #create dataloader
-    train_loader, val_loader = create_dataloader(dataloader,batch_size,mean,std)
 
     
     #train the model
@@ -352,13 +358,13 @@ def train(config, dataloader="torchvision"):
     finally:
         torch.save(model.state_dict(), f'checkpoints/{run_name}_finished.pth')
         with open(f'statistics/{run_name}_finished_train_losses.npy', 'wb') as f:
-            np.save(f, train_losses.numpy())
+            np.save(f, train_losses.cpu().numpy())
         with open(f'statistics/{run_name}_finished_val_losses.npy', 'wb') as f:
             np.save(f, np.array(val_losses))
         with open(f'statistics/{run_name}_finished_train_percent.npy', 'wb') as f:
-            np.save(f, train_percent.numpy())
+            np.save(f, train_percent.cpu().numpy())
         with open(f'statistics/{run_name}_finished_val_percent.npy', 'wb') as f:
-            np.save(f, np.array(val_percent.cpu()))
+            np.save(f, np.array(val_percent))
         print(f"Model and statistics saved!")
 
 
@@ -387,8 +393,3 @@ if __name__ == "__main__":
     stats = pstats.Stats(profiler)
     stats.sort_stats(SortKey.TIME)  # Sort by time
     stats.dump_stats('train_stats.prof')
-
-
-
-#operations like /255 on cpu: 6483it [54:11,  1.99it/s]
-#operations like /255 on gpu: 

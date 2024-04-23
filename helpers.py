@@ -13,7 +13,7 @@ def calculate_accuracy(outputs, labels):
     return correct
 
 #calculate the loss of the model, averaging every window_size batches
-def average_for_plotting(loss_list,window_size=1000):
+def average_for_plotting(loss_list:list,window_size:int=1000) -> list:
     partial_size = len(loss_list) % window_size
     if partial_size > 0:
         avg_losses = torch.tensor(loss_list[:-partial_size]).view(-1,1000).mean(1)

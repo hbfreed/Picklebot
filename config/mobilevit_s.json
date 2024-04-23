@@ -1,0 +1,17 @@
+{
+"model_name" : "MobileViT",
+"learning_rate": 3e-4,
+"batch_size": 6,
+"max_iters": 100,
+"eval_interval": 1,
+"weight_decay": 5e-4,
+"std": [0.2104, 0.1986, 0.1829],
+"mean": [0.3939, 0.3817, 0.3314],
+"use_autocast": true,
+"compile": false,
+"criterion": "CE",
+"checkpoint": null,
+"dims": [144,192,240],
+"channels": [16,32,64,64,96,96,128,128,160,160,640]
+}
+

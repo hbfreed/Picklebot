@@ -2,7 +2,7 @@
 "model_name" : "MobileNetSmall3D",
 "learning_rate": 5e-4,
 "batch_size": 16,
-"max_iters": 1,
+"max_iters": 100,
 "eval_interval": 1,
 "weight_decay": 5e-4,
 "std": [0.2104, 0.1986, 0.1829],
