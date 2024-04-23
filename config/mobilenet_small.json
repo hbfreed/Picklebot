@@ -1,6 +1,6 @@
 {
 "model_name" : "MobileNetSmall3D",
-"learning_rate": 5e-4,
+"learning_rate": 1e-3,
 "batch_size": 16,
 "max_iters": 100,
 "eval_interval": 1,
@@ -10,5 +10,9 @@
 "use_autocast": true, 
 "compile": true,
 "criterion": "CE",
-"checkpoint": null 
+"checkpoint": null,
+"train_annotations_file": "/home/henry/Documents/PythonProjects/picklebot_dataset/train_labels.csv",
+"val_annotations_file": "/home/henry/Documents/PythonProjects/picklebotdataset/val_labels.csv",
+"video_paths": "/home/henry/Documents/PythonProjects/picklebot_dataset/all_together",
+"num_classes": 2
 }

@@ -32,19 +32,12 @@ def state_dict_converter(state_dict):
             del state_dict[key]
     return state_dict
 
-def create_dataloader(dataloader,batch_size,mean,std):
+def create_dataloader(dataloader,batch_size,mean,std,train_annotations_file,val_annotations_file,video_paths):
     #create dataloader
     if dataloader == "torchvision":
         from torch.utils.data import DataLoader
         from dataloader import PicklebotDataset, custom_collate
-        #from torchvision import transforms
-
-        #annotations paths
-        train_annotations_file = '/home/henry/Documents/PythonProjects/picklebot_2m/picklebot_130k_train.csv'
-        val_annotations_file = '/home/henry/Documents/PythonProjects/picklebot_2m/picklebot_130k_val.csv'
-
-        #video paths
-        video_paths = '/home/henry/Documents/PythonProjects/picklebot_2m/picklebot_130k_all_together'
+        #from torchvision import transforms may want to put this back in one day
         
 
         #establish our normalization using transforms, 
@@ -204,6 +197,10 @@ def train(config, dataloader="torchvision"):
     compile = config["compile"]
     criterion = config["criterion"]
     checkpoint = config["checkpoint"]
+    train_annotations_file = config["train_annotations_file"]
+    val_annotations_file = config["val_annotations_file"]
+    video_paths = config["video_paths"]
+    num_classes = config["num_classes"]
 
     print(f"Training model: {model_name} Using device: {device} with dtype: {dtype}")
 
@@ -214,7 +211,7 @@ def train(config, dataloader="torchvision"):
         if model_name == "MobileViT":
             dims = config["dims"]
             channels = config["channels"]
-            model = valid_models[model_name](dims=dims,channels=channels,num_classes=13).to(device,non_blocking=True)
+            model = valid_models[model_name](dims=dims,channels=channels,num_classes=num_classes).to(device,non_blocking=True)
             accuracy_calc = calculate_accuracy
         else:
             model = valid_models[model_name](num_classes=13).to(device,non_blocking=True)
@@ -254,16 +251,17 @@ def train(config, dataloader="torchvision"):
     if checkpoint is not None:
         print("Loading checkpoint...")
         checkpoint = torch.load(checkpoint)
-        model.load_state_dict(checkpoint)
-        start_epoch = checkpoint[-2]
+        model.load_state_dict(state_dict_converter(checkpoint))
+        start_epoch = config["checkpoint"]
         print(f"Loaded checkpoint at epoch {start_epoch}")
 
     #create dataloader
-    train_loader, val_loader = create_dataloader(dataloader,batch_size,mean,std)
+    train_loader, val_loader = create_dataloader(dataloader,batch_size,mean,std,train_annotations_file,val_annotations_file,video_paths)
     
     #compile the model
     if compile:
         print("Compiling the model... (takes a ~minute)")
+        # unoptimized_model = model
         model = torch.compile(model)  # requires PyTorch 2 and a modern gpu (seems like mostly V/A/H 100s work best, but it absolutely speeds up my 7900xtx)
         print("Compilation complete!")
     
