@@ -208,9 +208,6 @@ class MobileNetLarge3D(nn.Module):
                         init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
                     elif module.nonlinearity == 'hardswish':
                         init.xavier_uniform_(module.weight)
-            elif isinstance(module, nn.BatchNorm3d):
-                init.constant_(module.weight, 1)
-                init.constant_(module.bias, 0)
 
 #mobilenet small 3d convolutions
 class MobileNetSmall3D(nn.Module):

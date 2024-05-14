@@ -22,7 +22,7 @@ from helpers import calculate_accuracy_bce, average_for_plotting, calculate_accu
 
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-dtype = torch.bfloat16 if device == 'cuda' else torch.float16 
+dtype = torch.bfloat16 if device == 'cuda' else torch.float32
 
 def state_dict_converter(state_dict):
     for key in list(state_dict.keys()):
@@ -261,7 +261,7 @@ def train(config, dataloader="torchvision"):
     #compile the model
     if compile:
         print("Compiling the model... (takes a ~minute)")
-        # unoptimized_model = model
+        unoptimized_model = model
         model = torch.compile(model)  # requires PyTorch 2 and a modern gpu (seems like mostly V/A/H 100s work best, but it absolutely speeds up my 7900xtx)
         print("Compilation complete!")
     
@@ -362,15 +362,15 @@ def train(config, dataloader="torchvision"):
         with open(f'statistics/{run_name}_finished_train_percent.npy', 'wb') as f:
             np.save(f, train_percent.cpu().numpy())
         with open(f'statistics/{run_name}_finished_val_percent.npy', 'wb') as f:
-            np.save(f, np.array(val_percent))
+            np.save(f, (val_percent))
         print(f"Model and statistics saved!")
 
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Train a model with the specified config")
-    parser.add_argument("--config","-c", type=str, required=True, help="Path to config file")
-    parser.add_argument("--dataloader", "-d", type=str, required=False, help="Choose a dataloader from torchvision, dali, or rocal")
+    parser.add_argument("--config","-C", type=str, required=True, help="Path to config file")
+    parser.add_argument("--dataloader", "-D", type=str, required=False, help="Choose a dataloader from torchvision, dali, or rocal")
     args = parser.parse_args()
     config = load_config(args.config)
     if args.dataloader is not None:

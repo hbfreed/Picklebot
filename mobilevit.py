@@ -2,25 +2,25 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from mobilenet import Bottleneck3D
-from flash_attn import flash_attn_func,flash_attn_qkvpacked_func
+from flash_attn import flash_attn_func,flash_attn_qkvpacked_func,flash_attn_triton_qkvpacked_func
 from einops import rearrange
 from einops.layers.torch import Reduce
 from typing import Union, Tuple, List
 
-'''Put together with a lot of help from the huggingface implementation and lucidrains (https://github.com/lucidrains/vit-pytorch/)'''
+'''Put together with a lot of inspiration from the huggingface implementation and lucidrains, karpathy, and the flash attention team'''
 
 #helpers
 def conv_1x1_bn(in_channels: int, out_channels: int) -> nn.Sequential:
     return nn.Sequential(
         nn.Conv3d(in_channels, out_channels, 1, 1, 0, bias=False),
-        nn.BatchNorm3d(out_channels),
+        nn.BatchNorm3d(out_channels,affine=False),
         nn.SiLU()
     )
 
 def conv_nxn_bn(in_channels: int, out_channels: int, kernel_size: Union[int, Tuple[int, ...]]=3, stride: int=1) -> nn.Sequential:
     return nn.Sequential(
         nn.Conv3d(in_channels, out_channels, kernel_size, stride, 1, bias=False),
-        nn.BatchNorm3d(out_channels),
+        nn.BatchNorm3d(out_channels,affine=False),
         nn.SiLU()
     )
 
@@ -30,10 +30,10 @@ class FeedForward(nn.Module):
     def __init__(self, embed_dim: int, hidden_dim: int, dropout: float=0.):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(embed_dim, hidden_dim),
+            nn.Linear(embed_dim, hidden_dim, bias=False),
             nn.SiLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, embed_dim),
+            nn.Linear(hidden_dim, embed_dim, bias=False),
             nn.Dropout(dropout)
         )
 
@@ -48,14 +48,14 @@ class Attention(nn.Module):
         self.heads = heads
         self.scale = dim_head ** -0.5 #normalize/scale the dot product
 
-        self.norm = nn.LayerNorm(embed_dim) #normalize the input
+        self.norm = nn.LayerNorm(embed_dim,elementwise_affine=False) #normalize the input
         self.attend = nn.Softmax(dim=-1) #softmax the attention scores
         self.dropout_p = dropout
         self.dropout = nn.Dropout(dropout)
 
         self.to_qkv = nn.Linear(embed_dim, inner_dim * 3, bias=False)
         self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, embed_dim),
+            nn.Linear(inner_dim, embed_dim, bias=False),
             nn.Dropout(dropout)
         )
         self.flash = True #check if the scaled dot product attention function is available, the flash attention stuff is from karpathy nanoGPT
@@ -66,12 +66,10 @@ class Attention(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.norm(x)
         qkv = self.to_qkv(x) #instead of using separate linear layers for q, k, and v, we use one linear layer and split the output into 3 parts
-        print(f"qkv:{qkv[0].shape, qkv[1].shape, qkv[2].shape}")
         if self.flash:
             # out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None,dropout_p=self.dropout_p) #scaled dot product attention
             qkv = qkv.view(qkv.shape[0],qkv.shape[2],3,qkv.shape[1],qkv.shape[3]//3)
-            print(f"qkv:{qkv.shape}")
-            out = flash_attn_qkvpacked_func(qkv) #scaled dot product attention
+            out = flash_attn_triton_qkvpacked_func(qkv) #scaled dot product attention
             out = out.transpose(1,2)
             # out = flash_attn_func(q, k, v, dropout_p=self.dropout_p) #scaled dot product attention
 
@@ -125,7 +123,6 @@ class MobileViTBlock(nn.Module):
         # Local representations
         x = self.conv1(x)
         x = self.conv2(x)
-
         # Global representations
         _, _, t, h, w = x.shape
         t_pad = (self.pt - t % self.pt) % self.pt
@@ -144,6 +141,21 @@ class MobileViTBlock(nn.Module):
         x = self.conv4(x)
         return x
     
+
+class NanDetector(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input)
+        return input
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, = ctx.saved_tensors
+        if torch.isnan(grad_output).any():
+            raise RuntimeError(f"Found nan in the backward pass for input:\n{input}")
+        if torch.isnan(input).any():
+            raise RuntimeError(f"Found nan in the forward pass for input:\n{input}")
+        return grad_output
 
 class MobileViT(nn.Module):
     def __init__(
@@ -203,7 +215,6 @@ class MobileViT(nn.Module):
         for conv, attn in self.trunk:
             x = conv(x)
             x = attn(x)
-            
         x = self.to_logits(x)
         return x
 
@@ -214,7 +225,5 @@ class MobileViT(nn.Module):
                 # cf https://github.com/pytorch/pytorch/pull/5617
                 module.weight.data.normal_(mean=0.0, std=0.02)
                 if module.bias is not None:
+                    print(module.bias.data)
                     module.bias.data.zero_()
-            elif isinstance(module, nn.LayerNorm):
-                module.bias.data.zero_()
-                module.weight.data.fill_(1.0)

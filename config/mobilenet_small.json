@@ -11,8 +11,8 @@
 "compile": true,
 "criterion": "CE",
 "checkpoint": null,
-"train_annotations_file": "/home/henry/Documents/PythonProjects/picklebot_dataset/train_labels.csv",
-"val_annotations_file": "/home/henry/Documents/PythonProjects/picklebotdataset/val_labels.csv",
-"video_paths": "/home/henry/Documents/PythonProjects/picklebot_dataset/all_together",
+"train_annotations_file": "/home/henry/Documents/PythonProjects/picklebotdataset/train_labels_no_paths.csv",
+"val_annotations_file": "/home/henry/Documents/PythonProjects/picklebotdataset/val_labels_no_paths.csv",
+"video_paths": "/home/henry/Documents/PythonProjects/picklebotdataset/all_together",
 "num_classes": 2
 }
