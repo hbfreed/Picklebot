@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
-import nvidia.dali.fn as dalifn
-from nvidia.dali import pipeline_def as dali_pipeline_def
+#import nvidia.dali.fn as dalifn
+#from nvidia.dali import pipeline_def as dali_pipeline_def
 # import amd.rocal.fn as fn 
 # from amd.rocal.pipeline import pipeline_def
 
@@ -24,13 +24,13 @@ def average_for_plotting(loss_list:list,window_size:int=1000) -> list:
         avg_losses = torch.tensor(loss_list).view(-1,1000).mean(1)
     return avg_losses
 # define our pipeline
-@dali_pipeline_def
-def dali_video_pipeline(file_root, sequence_length, initial_prefetch_size,mean,std):
-    videos, labels = dalifn.readers.video(device="cpu", file_root=file_root, sequence_length=sequence_length,
-                              shard_id=0, num_shards=1, random_shuffle=False, initial_fill=initial_prefetch_size,pad_sequences=False,
-                              file_list_include_preceding_frame=False)
-    videos = dalifn.normalize(videos,mean=mean,stddev=std)
-    return videos, labels
+#@dali_pipeline_def
+#def dali_video_pipeline(file_root, sequence_length, initial_prefetch_size,mean,std):
+#    videos, labels = dalifn.readers.video(device="cpu", file_root=file_root, sequence_length=sequence_length,
+#                              shard_id=0, num_shards=1, random_shuffle=False, initial_fill=initial_prefetch_size,pad_sequences=False,
+#                              file_list_include_preceding_frame=False)
+#    videos = dalifn.normalize(videos,mean=mean,stddev=std)
+#    return videos, labels
 
 # @pipeline_def
 # def rocal_video_pipeline(file_root, sequence_length, initial_prefetch_size,mean,std):

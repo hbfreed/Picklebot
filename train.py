@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from decimal import Decimal
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 from tqdm import tqdm
 from psutil import cpu_count
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -242,7 +242,7 @@ def train(config, dataloader="torchvision"):
 
     #create scaler for mixed precision training
     if use_autocast:
-        scaler = GradScaler()
+        scaler = GradScaler('cuda')
 
     #create tensorboard writer
     run_name = f"{model_name}_{criterion}"
@@ -291,7 +291,7 @@ def train(config, dataloader="torchvision"):
                 optimizer.zero_grad(set_to_none=True)
 
                 if use_autocast:
-                    with autocast(dtype=dtype):
+                    with autocast('cuda',enabled=True,dtype=dtype):
                         outputs = model(features)
                         if str(criterion) == "CrossEntropyLoss()":
                             labels = labels.to(torch.long).squeeze(1)

@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from mobilenet import Bottleneck3D
-from flash_attn import flash_attn_func,flash_attn_qkvpacked_func,flash_attn_triton_qkvpacked_func
 from einops import rearrange
 from einops.layers.torch import Reduce
 from typing import Union, Tuple, List
@@ -67,10 +66,12 @@ class Attention(nn.Module):
         x = self.norm(x)
         qkv = self.to_qkv(x) #instead of using separate linear layers for q, k, and v, we use one linear layer and split the output into 3 parts
         if self.flash:
-            # out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None,dropout_p=self.dropout_p) #scaled dot product attention
-            qkv = qkv.view(qkv.shape[0],qkv.shape[2],3,qkv.shape[1],qkv.shape[3]//3)
-            out = flash_attn_triton_qkvpacked_func(qkv) #scaled dot product attention
+            qkv = qkv.chunk(3, dim=-1) #instead of using separate linear layers for q, k, and v, we use one linear layer and split the output into 3 parts    
+            q, k, v = map(lambda t: rearrange(t, 'b p n (h d) -> b p h n d', h=self.heads), qkv) #split the heads, rearrange the dimensions (b: batch, p: patch, n: number of tokens/sequence length, h: number of heads d: dim_head)
+            out = F.scaled_dot_product_attention(q,k,v) 
             out = out.transpose(1,2)
+            print(f"Lk:{out.shape}")
+            out = rearrange(out, 'b p h n d -> b p n (h d)') #combine the heads
             # out = flash_attn_func(q, k, v, dropout_p=self.dropout_p) #scaled dot product attention
 
         else:
@@ -112,7 +113,7 @@ class MobileViTBlock(nn.Module):
         self.conv2 = conv_1x1_bn(channel, embed_dim)
 
         #vivit
-        self.transformer = Transformer(embed_dim=embed_dim, depth=depth, heads=4, dim_head=8, ffw_dim=ffw_dim, dropout=dropout)
+        self.transformer = Transformer(embed_dim=embed_dim, depth=depth, heads=8, dim_head=16, ffw_dim=ffw_dim, dropout=dropout)
 
         self.conv3 = conv_1x1_bn(embed_dim, channel)
         self.conv4 = conv_nxn_bn(2*channel, channel, kernel_size)
@@ -141,21 +142,6 @@ class MobileViTBlock(nn.Module):
         x = self.conv4(x)
         return x
     
-
-class NanDetector(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, input):
-        ctx.save_for_backward(input)
-        return input
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        input, = ctx.saved_tensors
-        if torch.isnan(grad_output).any():
-            raise RuntimeError(f"Found nan in the backward pass for input:\n{input}")
-        if torch.isnan(input).any():
-            raise RuntimeError(f"Found nan in the forward pass for input:\n{input}")
-        return grad_output
 
 class MobileViT(nn.Module):
     def __init__(
