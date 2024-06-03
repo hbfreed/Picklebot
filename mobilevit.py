@@ -70,7 +70,6 @@ class Attention(nn.Module):
             q, k, v = map(lambda t: rearrange(t, 'b p n (h d) -> b p h n d', h=self.heads), qkv) #split the heads, rearrange the dimensions (b: batch, p: patch, n: number of tokens/sequence length, h: number of heads d: dim_head)
             out = F.scaled_dot_product_attention(q,k,v) 
             out = out.transpose(1,2)
-            print(f"Lk:{out.shape}")
             out = rearrange(out, 'b p h n d -> b p n (h d)') #combine the heads
             # out = flash_attn_func(q, k, v, dropout_p=self.dropout_p) #scaled dot product attention
 

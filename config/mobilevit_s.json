@@ -1,7 +1,7 @@
 {
 "model_name" : "MobileViT",
 "learning_rate": 3e-4,
-"batch_size": 6,
+"batch_size": 1,
 "max_iters": 100,
 "eval_interval": 1,
 "weight_decay": 5e-4,
