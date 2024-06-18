@@ -8,7 +8,6 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from decimal import Decimal
 from torch.amp import GradScaler, autocast
 from tqdm import tqdm
 from psutil import cpu_count
@@ -226,10 +225,10 @@ def train(config, dataloader="torchvision"):
         model = nn.DataParallel(model)
     
     #create optimizer
-    optimizer = optim.AdamW(model.parameters(),lr=learning_rate,weight_decay=weight_decay)
+    optimizer = optim.AdamW(model.parameters(),lr=learning_rate,weight_decay=weight_decay,fused=True)
 
     #create scheduler
-    eta_min = float(Decimal(str(learning_rate))/Decimal('10')) #lr/10
+    eta_min = learning_rate/10
     scheduler = CosineAnnealingLR(optimizer,T_max=max_iters,eta_min=eta_min)
 
     #create loss function
@@ -261,7 +260,6 @@ def train(config, dataloader="torchvision"):
     #compile the model
     if compile:
         print("Compiling the model... (takes a ~minute)")
-        unoptimized_model = model
         model = torch.compile(model)  # requires PyTorch 2 and a modern gpu (seems like mostly V/A/H 100s work best, but it absolutely speeds up my 7900xtx)
         print("Compilation complete!")
     

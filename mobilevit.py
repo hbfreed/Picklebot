@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from mobilenet import Bottleneck3D
+from flash_attn import flash_attn_func, flash_attn_qkvpacked_func
 from einops import rearrange
 from einops.layers.torch import Reduce
 from typing import Union, Tuple, List
@@ -57,22 +58,25 @@ class Attention(nn.Module):
             nn.Linear(inner_dim, embed_dim, bias=False),
             nn.Dropout(dropout)
         )
-        self.flash = True #check if the scaled dot product attention function is available, the flash attention stuff is from karpathy nanoGPT
+        self.flash = True#check if the scaled dot product attention function is available, the flash attention stuff is from karpathy nanoGPT
         if not self.flash:
             print("WARNING: using slow attention. Flash Attention requires PyTorch >= 2.0")
 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.norm(x)
-        qkv = self.to_qkv(x) #instead of using separate linear layers for q, k, and v, we use one linear layer and split the output into 3 parts
+        qkv = self.to_qkv(x)
         if self.flash:
-            qkv = qkv.chunk(3, dim=-1) #instead of using separate linear layers for q, k, and v, we use one linear layer and split the output into 3 parts    
-            q, k, v = map(lambda t: rearrange(t, 'b p n (h d) -> b p h n d', h=self.heads), qkv) #split the heads, rearrange the dimensions (b: batch, p: patch, n: number of tokens/sequence length, h: number of heads d: dim_head)
-            torch.backends.cuda.enable_flash_sdp(enabled=True)
-            out = F.scaled_dot_product_attention(q,k,v) 
+            # qkv = qkv.chunk(3, dim=-1) #instead of using separate linear layers for q, k, and v, we use one linear layer and split the output into 3 parts    
+            # q, k, v = map(lambda t: rearrange(t, 'b p n (h d) -> b p h n d', h=self.heads), qkv) #split the heads, rearrange the dimensions (b: batch, p: patch, n: number of tokens/sequence length, h: number of heads d: dim_head)
+            # out = F.scaled_dot_product_attention(q, k, v, dropout_p=self.dropout_p)
+
+            b, h, n, d3 = qkv.shape
+            d = d3 // 3  # Calculate d
+            qkv = qkv.view(b, n, h, 3, d)
+            qkv = qkv.permute(0, 1, 3, 2, 4)
+            out = flash_attn_qkvpacked_func(qkv,dropout_p=self.dropout_p)#qkv packed is supposed to be slightly faster 
             out = out.transpose(1,2)
-            out = rearrange(out, 'b p h n d -> b p n (h d)') #combine the heads
-            # out = flash_attn_func(q, k, v, dropout_p=self.dropout_p) #scaled dot product attention
 
         else:
             qkv = qkv.chunk(3, dim=-1) #instead of using separate linear layers for q, k, and v, we use one linear layer and split the output into 3 parts    
@@ -80,7 +84,6 @@ class Attention(nn.Module):
             dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale #dot product of q and k, scaled by the square root of the dimension of the head
             attn = self.attend(dots) #apply softmax to the attention scores
             attn = self.dropout(attn)
-
             out = torch.matmul(attn, v) #multiply the attention scores by the values
             out = rearrange(out, 'b p h n d -> b p n (h d)') #combine the heads
         return self.to_out(out)
