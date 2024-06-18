@@ -157,7 +157,7 @@ def estimate_loss(model,val_loader,criterion,dataloader,use_autocast):
     for output in tqdm(val_loader):
         features,labels = extract_features_labels(output,dataloader)
         if use_autocast:
-            with autocast(dtype=dtype):
+            with autocast(dtype=dtype,device_type=device):
                 outputs = model(features)
                 if str(criterion) == "CrossEntropyLoss()":
                     labels = labels.to(torch.long).squeeze(1)
@@ -276,7 +276,7 @@ def train(config, dataloader="torchvision"):
     train_percent = torch.tensor([])
     val_losses = []
     val_percent = []
-    
+
     try:
         for iter in range(max_iters):
             model.train()
@@ -362,7 +362,7 @@ def train(config, dataloader="torchvision"):
         with open(f'statistics/{run_name}_finished_train_percent.npy', 'wb') as f:
             np.save(f, train_percent.cpu().numpy())
         with open(f'statistics/{run_name}_finished_val_percent.npy', 'wb') as f:
-            np.save(f, (val_percent))
+            np.save(f, (val_percent[-1].cpu().numpy()))
         print(f"Model and statistics saved!")
 
 

@@ -68,6 +68,7 @@ class Attention(nn.Module):
         if self.flash:
             qkv = qkv.chunk(3, dim=-1) #instead of using separate linear layers for q, k, and v, we use one linear layer and split the output into 3 parts    
             q, k, v = map(lambda t: rearrange(t, 'b p n (h d) -> b p h n d', h=self.heads), qkv) #split the heads, rearrange the dimensions (b: batch, p: patch, n: number of tokens/sequence length, h: number of heads d: dim_head)
+            torch.backends.cuda.enable_flash_sdp(enabled=True)
             out = F.scaled_dot_product_attention(q,k,v) 
             out = out.transpose(1,2)
             out = rearrange(out, 'b p h n d -> b p n (h d)') #combine the heads
