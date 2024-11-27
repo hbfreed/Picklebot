@@ -1,7 +1,7 @@
 {
 "model_name" : "MobileViT",
 "learning_rate": 3e-4,
-"batch_size": 1,
+"batch_size": 16,
 "max_iters": 100,
 "eval_interval": 1,
 "weight_decay": 5e-4,
@@ -16,6 +16,7 @@
 "train_annotations_file": "/home/henry/Documents/PythonProjects/picklebot_2m/picklebot_130k_train.csv",
 "val_annotations_file": "/home/henry/Documents/PythonProjects/picklebot_2m/picklebot_130k_val.csv",
 "video_paths": "/home/henry/Documents/PythonProjects/picklebot_2m/picklebot_130k_all_together",
-"num_classes": 13
+"num_classes": 13,
+"effective_batch_size": 1024
 }
 

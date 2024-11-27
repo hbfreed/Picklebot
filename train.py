@@ -1,27 +1,39 @@
-#Train our models and save them to disk
-#Usage: python train.py --config config/config.json --dataloader torchvision
-import os
 import time
-import numpy as np
 import json
 import argparse
+import os
 import torch
 import torch.nn as nn
-import torch.optim as optim
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data.distributed import DistributedSampler
 from torch.amp import GradScaler, autocast
 from tqdm import tqdm
-from psutil import cpu_count
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
-from mobilenet import MobileNetSmall3D,MobileNetLarge3D
+import cProfile
+import pstats
+from pstats import SortKey
+from torch.utils.data import DataLoader
+from dataloader import PicklebotDataset, custom_collate
+from mobilenet import MobileNetSmall3D, MobileNetLarge3D
 from movinet import MoViNetA2
 from mobilevit import MobileViT
-from helpers import calculate_accuracy_bce, average_for_plotting, calculate_accuracy
-#classification 0 is zone 1, classification 1 is zone 2, etc.
+import bitsandbytes as bnb
 
+def setup_distributed():
+    """Initialize distributed training"""
+    if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
+        rank = int(os.environ['RANK'])
+        world_size = int(os.environ['WORLD_SIZE'])
+        local_rank = int(os.environ['LOCAL_RANK'])
+    else:
+        print('Not using distributed mode')
+        return None, None, None
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-dtype = torch.bfloat16 if device == 'cuda' else torch.float32
+    torch.cuda.set_device(local_rank)
+    dist.init_process_group("nccl")
+    return local_rank, rank, world_size
 
 def state_dict_converter(state_dict):
     for key in list(state_dict.keys()):
@@ -31,119 +43,82 @@ def state_dict_converter(state_dict):
             del state_dict[key]
     return state_dict
 
-def create_dataloader(dataloader,batch_size,mean,std,train_annotations_file,val_annotations_file,video_paths):
-    #create dataloader
-    if dataloader == "torchvision":
-        from torch.utils.data import DataLoader
-        from dataloader import PicklebotDataset, custom_collate
-        #from torchvision import transforms may want to put this back in one day
-        
+def create_dataloader(config: dict) -> tuple[DataLoader, DataLoader]:
+    train_dataset = PicklebotDataset(
+        config['train_annotations_file'],
+        config['video_paths'],
+        backend='opencv'
+    )
+    val_dataset = PicklebotDataset(
+        config['val_annotations_file'],
+        config['video_paths'],
+        backend='opencv'
+    )
+    
+    # Create samplers for distributed training
+    train_sampler = DistributedSampler(train_dataset) if dist.is_initialized() else None
+    val_sampler = DistributedSampler(val_dataset, shuffle=False) if dist.is_initialized() else None
+    
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=config['batch_size'],
+        sampler=train_sampler,
+        shuffle=(train_sampler is None),
+        collate_fn=custom_collate,
+        num_workers=8,
+        pin_memory=True,
+        persistent_workers=True,
+        prefetch_factor=4
+    )
+    
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=config['batch_size'],
+        sampler=val_sampler,
+        shuffle=False,
+        collate_fn=custom_collate,
+        num_workers=8,
+        pin_memory=True,
+        persistent_workers=True
+    )
+    
+    return train_loader, val_loader, train_sampler
 
-        #establish our normalization using transforms, 
-        #note that we are doing this in our dataloader as opposed to in the training loop like with dali
-        #transform = transforms.Normalize(mean,std)
-
-        #dataset     
-        train_dataset = PicklebotDataset(train_annotations_file,video_paths,dtype=dtype,backend='opencv') #may want to add transform=transform back
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,shuffle=False,collate_fn=custom_collate,num_workers=16,pin_memory=True) 
-        val_dataset = PicklebotDataset(val_annotations_file,video_paths,dtype=dtype,backend='opencv') #may want to add transform=transform back
-        val_loader = DataLoader(val_dataset, batch_size=batch_size,shuffle=False,collate_fn=custom_collate,num_workers=16,pin_memory=True)
-
-
-    elif dataloader == "dali":
-        from nvidia.dali.plugin.pytorch import DALIClassificationIterator, LastBatchPolicy
-        from helpers import dali_video_pipeline
-
-        #information for the dali pipeline
-        sequence_length = 130 #longest videos in our dataset 
-        initial_prefetch_size = 20
-
-
-        #video paths
-        train_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/train'
-        val_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/val'
-
-        num_train_videos = len(os.listdir(train_video_paths + '/' + 'balls')) + len(os.listdir(train_video_paths + '/' + 'strikes'))
-        num_val_videos = len(os.listdir(val_video_paths + '/' + 'balls')) + len(os.listdir(val_video_paths + '/' + 'strikes'))
-
-        #multiply mean and val by 255 to convert to 0-255 range
-        mean = (torch.tensor(mean)*255)[None,None,None,:]
-        std = (torch.tensor(std)*255)[None,None,None,:]
-
-        print("Building DALI pipelines...")
-
-        #build our pipelines
-        train_pipe = dali_video_pipeline(batch_size=batch_size, num_threads=cpu_count()//2, device_id=0, file_root=train_video_paths,
-                                    sequence_length=sequence_length,initial_prefetch_size=initial_prefetch_size,mean=mean*255,std=std*255)
-        val_pipe = dali_video_pipeline(batch_size=batch_size, num_threads=cpu_count()//2, device_id=0, file_root=val_video_paths,
-                                sequence_length=sequence_length,initial_prefetch_size=initial_prefetch_size,mean=mean,std=std)
-
-        train_pipe.build()
-        val_pipe.build()
-
-
-        train_loader = DALIClassificationIterator(train_pipe, auto_reset=True,last_batch_policy=LastBatchPolicy.PARTIAL, size=num_train_videos)
-        val_loader = DALIClassificationIterator(val_pipe, auto_reset=True,last_batch_policy=LastBatchPolicy.PARTIAL, size=num_val_videos)
-
-        
-
-    elif dataloader == "rocal":
-        from amd.rocal.plugin.pytorch import ROCALClassificationIterator
-        from helpers import rocal_video_pipeline
-
-        #information for the dali pipeline
-        sequence_length = 130 #longest videos in our dataset 
-        initial_prefetch_size = 20
-
-
-        #video paths
-        train_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/train'
-        val_video_paths = '/home/henry/Documents/PythonProjects/picklebotdataset/val'
-
-        num_train_videos = len(os.listdir(train_video_paths + '/' + 'balls')) + len(os.listdir(train_video_paths + '/' + 'strikes'))
-        num_val_videos = len(os.listdir(val_video_paths + '/' + 'balls')) + len(os.listdir(val_video_paths + '/' + 'strikes'))
-
-        #multiply mean and val by 255 to convert to 0-255 range
-        mean = (torch.tensor(mean)*255)[None,None,None,:]
-        std = (torch.tensor(std)*255)[None,None,None,:]
-
-        print("Building rocAL pipelines...")
-
-        #build our pipelines
-        train_pipe = rocal_video_pipeline(batch_size=batch_size, num_threads=cpu_count()//2, device_id=0, file_root=train_video_paths,
-                                    sequence_length=sequence_length,initial_prefetch_size=initial_prefetch_size,mean=mean*255,std=std*255)
-        val_pipe = rocal_video_pipeline(batch_size=batch_size, num_threads=cpu_count()//2, device_id=0, file_root=val_video_paths,
-                                sequence_length=sequence_length,initial_prefetch_size=initial_prefetch_size,mean=mean,std=std)
-
-        train_pipe.build()
-        val_pipe.build()
-
-
-        train_loader = ROCALClassificationIterator(train_pipe, auto_reset=True, size=num_train_videos)
-        val_loader = ROCALClassificationIterator(val_pipe, auto_reset=True, size=num_val_videos)
-    return train_loader, val_loader
-
+def get_average(loss_list:list, window_size:int=1000) -> list:
+    partial_size = len(loss_list) % window_size
+    if partial_size > 0:
+        avg_losses = torch.tensor(loss_list[:-partial_size]).view(-1,1000).mean(1)
+        avg_partial = torch.tensor(loss_list[-partial_size:]).view(-1,partial_size).mean(1)
+        avg_losses = torch.cat((avg_losses, avg_partial))
+    else:
+        avg_losses = torch.tensor(loss_list).view(-1,1000).mean(1)
+    return avg_losses
 
 def load_config(config_path):
     with open(config_path) as config_file:
         config = json.load(config_file)
     return config
 
-def extract_features_labels(output,dataloader):
-    if dataloader == "torchvision":
-        features = output[0].to(device,non_blocking=True).permute(0,-1,1,2,3).to(torch.bfloat16) / 255 #doing these operations on the gpu makes loading 2x faster, investigating if we're better off doing this on the cpu to keep the gpu working on the model
-        labels = output[1].unsqueeze(1).to(device,non_blocking=True)
-
-    elif dataloader == "dali":
-        features = output[0]["data"].float().to(device,non_blocking=True)
-        features = features/255 #normalize to 0-1
-        features = features.permute(0,-1,1,2,3) #move channels to front
-        labels = output[0]["label"].to(device,non_blocking=True)
-        labels = labels.float()
-    return features,labels
+def extract_features_labels(output, device):
+    features = output[0].to(device, non_blocking=True).permute(0,-1,1,2,3).to(torch.bfloat16)/255
+    labels = output[1].unsqueeze(1).to(device, non_blocking=True)
+    return features, labels
 
 @torch.no_grad()
-def estimate_loss(model,val_loader,criterion,dataloader,use_autocast):
+def calculate_accuracy(outputs, labels):
+    _, preds = torch.max(outputs, dim=1)
+    correct = torch.sum(preds == labels)
+    return correct
+
+def calculate_accuracy_bce(outputs, labels, threshold=0.5):
+    outputs = torch.sigmoid(outputs)
+    preds = (outputs >= threshold).float().cpu()
+    labels = labels.cpu()
+    num_correct = torch.sum(preds == labels, dtype=torch.int64).item()
+    return num_correct
+
+@torch.no_grad()
+def estimate_loss(model, val_loader, criterion, device, use_autocast, dtype):
     print("Evaluating...")
     model.eval()
     if str(criterion) == "CrossEntropyLoss()":
@@ -154,238 +129,234 @@ def estimate_loss(model,val_loader,criterion,dataloader,use_autocast):
     val_samples = 0
     val_loss = 0
     for output in tqdm(val_loader):
-        features,labels = extract_features_labels(output,dataloader)
+        features, labels = extract_features_labels(output, device)
         if use_autocast:
-            with autocast(dtype=dtype,device_type=device):
+            with autocast(dtype=dtype, device_type='cuda'):
                 outputs = model(features)
                 if str(criterion) == "CrossEntropyLoss()":
                     labels = labels.to(torch.long).squeeze(1)
-                val_correct += accuracy_calc(outputs,labels)
+                val_correct += accuracy_calc(outputs, labels)
                 val_samples += labels.size(0)
-                val_loss += criterion(outputs,labels).item()
+                val_loss += criterion(outputs, labels).item()
         else:
             outputs = model(features)
             if str(criterion) == "CrossEntropyLoss()":
                 labels = labels.to(torch.long).squeeze(1)
-            val_correct += accuracy_calc(outputs,labels)
+            val_correct += accuracy_calc(outputs, labels)
             val_samples += labels.size(0)
-            val_loss += criterion(outputs,labels).item()
+            val_loss += criterion(outputs, labels).item()
     val_loss /= len(val_loader)
     val_accuracy = val_correct/val_samples
     return val_loss, val_accuracy
 
+def initialize_model(config: dict, device) -> nn.Module:
+    valid_models = {
+        "MoViNetA2": MoViNetA2,
+        "MobileNetLarge3D": MobileNetLarge3D,
+        "MobileNetSmall3D": MobileNetSmall3D,
+        "MobileViT": MobileViT
+    }
 
-def train(config, dataloader="torchvision"):
+    if config['model_name'] not in valid_models:
+        raise ValueError(f"Invalid model name: {config['model_name']}")
 
-    #hyperparameters
+    if config['model_name'] == "MobileViT":
+        model = valid_models[config['model_name']](
+            dims=config['dims'],
+            channels=config['channels'],
+            num_classes=config['num_classes']
+        ).to(device, non_blocking=True)
+    else:
+        model = valid_models[config['model_name']](
+            num_classes=config['num_classes']
+        ).to(device, non_blocking=True)
+
+    model.initialize_weights()
+
+    if config['compile']:
+        print("Compiling the model... (takes a ~minute)")
+        model = torch.compile(model)
+        print("Compilation complete!")
+
+    return model
+
+def train(config):
+    # Set up distributed training
+    local_rank, rank, world_size = setup_distributed()
+    device = torch.device(f'cuda:{local_rank}' if local_rank is not None else 'cuda')
+    is_main_process = rank in [0, None]  # True for rank 0 or single GPU
+    dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+
+    if torch.cuda.is_available() and not config.get('varying_input_size', False):
+        torch.backends.cudnn.benchmark = True
+
     torch.manual_seed(1234)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(1234)
         torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
 
-    model_name = config["model_name"]
-    learning_rate = config["learning_rate"]
-    batch_size = config["batch_size"]
-    max_iters = config["max_iters"]
-    eval_interval = config["eval_interval"]
-    weight_decay = config["weight_decay"]
-    std = tuple(config["std"]) #(0.2104, 0.1986, 0.1829)
-    mean = tuple(config["mean"]) #(0.3939, 0.3817, 0.3314)
-    use_autocast = config["use_autocast"]
-    compile = config["compile"]
-    criterion = config["criterion"]
-    checkpoint = config["checkpoint"]
-    train_annotations_file = config["train_annotations_file"]
-    val_annotations_file = config["val_annotations_file"]
-    video_paths = config["video_paths"]
-    num_classes = config["num_classes"]
+    # Create model and move it to GPU with DDP
+    model = initialize_model(config, device)
+    if local_rank is not None:
+        model = DDP(model, device_ids=[local_rank])
 
-    print(f"Training model: {model_name} Using device: {device} with dtype: {dtype}")
+    accuracy_calc = calculate_accuracy
 
-    #create model
-    valid_models = {"MoViNetA2":MoViNetA2,"MobileNetLarge3D":MobileNetLarge3D,"MobileNetSmall3D":MobileNetSmall3D,"MobileViT":MobileViT}
+    optimizer = bnb.optim.AdamW8bit(
+        model.parameters(),
+        lr=config['learning_rate'],
+        weight_decay=config['weight_decay']
+    )
 
-    if model_name in valid_models:
-        if model_name == "MobileViT":
-            dims = config["dims"]
-            channels = config["channels"]
-            model = valid_models[model_name](dims=dims,channels=channels,num_classes=num_classes).to(device,non_blocking=True)
-            accuracy_calc = calculate_accuracy
-        else:
-            model = valid_models[model_name](num_classes=13).to(device,non_blocking=True)
-            accuracy_calc = calculate_accuracy
-        
+    eta_min = config['learning_rate']/10
+    scheduler = CosineAnnealingLR(optimizer, T_max=config['max_iters'], eta_min=eta_min)
+
+    valid_losses = {"CE": nn.CrossEntropyLoss(), "BCE": nn.BCEWithLogitsLoss()}
+    if config['criterion'] in valid_losses:
+        criterion = valid_losses[config['criterion']]
     else:
-        raise ValueError(f"Invalid model name: {model_name}")
-    model.initialize_weights()
+        raise ValueError(f"Invalid criterion: {config['criterion']}")
 
-    if torch.cuda.device_count() > 1:
-        print(f"Using {torch.cuda.device_count()} GPUs")
-        model = nn.DataParallel(model)
-    
-    #create optimizer
-    optimizer = optim.AdamW(model.parameters(),lr=learning_rate,weight_decay=weight_decay,fused=True)
-
-    #create scheduler
-    eta_min = learning_rate/10
-    scheduler = CosineAnnealingLR(optimizer,T_max=max_iters,eta_min=eta_min)
-
-    #create loss function
-    valid_losses = {"CE":nn.CrossEntropyLoss(),"BCE":nn.BCEWithLogitsLoss()}
-    if criterion in valid_losses:
-        criterion = valid_losses[criterion]        
-
-    else:
-        raise ValueError(f"Invalid criterion: {criterion}")
-
-    #create scaler for mixed precision training
-    if use_autocast:
+    if config['use_autocast']:
         scaler = GradScaler('cuda')
 
-    #create tensorboard writer
-    run_name = f"{model_name}_{criterion}"
-    writer = SummaryWriter(f"runs/{run_name}")
+    if is_main_process:
+        run_name = f"{config['model_name']}_{criterion}"
+        writer = SummaryWriter(f"runs/{run_name}")
 
-    if checkpoint is not None:
+    if config['checkpoint'] is not None:
         print("Loading checkpoint...")
-        checkpoint = torch.load(checkpoint)
+        checkpoint = torch.load(config['checkpoint'])
         model.load_state_dict(state_dict_converter(checkpoint))
         start_epoch = config["checkpoint"]
         print(f"Loaded checkpoint at epoch {start_epoch}")
 
-    #create dataloader
-    train_loader, val_loader = create_dataloader(dataloader,batch_size,mean,std,train_annotations_file,val_annotations_file,video_paths)
+    train_loader, val_loader, train_sampler = create_dataloader(config)
     
-    #compile the model
-    if compile:
-        print("Compiling the model... (takes a ~minute)")
-        model = torch.compile(model)  # requires PyTorch 2 and a modern gpu (seems like mostly V/A/H 100s work best, but it absolutely speeds up my 7900xtx)
-        print("Compilation complete!")
-    
-
-    
-    #train the model
-
-    #training loop
     start_time = time.time()
     print(f"Training... started: {time.ctime(start_time)}")
     train_losses = torch.tensor([])
     train_percent = torch.tensor([])
     val_losses = []
     val_percent = []
+    assert config['effective_batch_size'] % config['batch_size'] == 0, "Batch size must divide effective batch size"
+    grad_accum_steps = config['effective_batch_size'] // config['batch_size']
+    print(f"Using {grad_accum_steps} gradient accumulation steps for a total effective batch size of {config['effective_batch_size']}")
 
     try:
-        for iter in range(max_iters):
+        for iter in range(config['max_iters']):
+            if train_sampler:
+                train_sampler.set_epoch(iter)
+                
             model.train()
             train_correct = 0
             train_samples = 0
             batch_loss_list = []
             batch_percent_list = []
             
-            for batch_idx, output in tqdm(enumerate(train_loader)):
-                features,labels = extract_features_labels(output,dataloader)
+            for batch_idx, output in enumerate(train_loader):
+                features, labels = extract_features_labels(output, device)
 
-                optimizer.zero_grad(set_to_none=True)
-
-                if use_autocast:
-                    with autocast('cuda',enabled=True,dtype=dtype):
+                if config['use_autocast']:
+                    with autocast('cuda', enabled=True, dtype=dtype):
                         outputs = model(features)
                         if str(criterion) == "CrossEntropyLoss()":
                             labels = labels.to(torch.long).squeeze(1)
-                        loss = criterion(outputs,labels)
+                        loss = criterion(outputs, labels)
                     scaler.scale(loss).backward()
-                    scaler.step(optimizer)
-                    scaler.update()
                 else:
                     outputs = model(features)
                     if str(criterion) == "CrossEntropyLoss()":
                         labels = labels.to(torch.long).squeeze(1)
-                    loss = criterion(outputs,labels)
+                    loss = criterion(outputs, labels)
                     loss.backward()
-                    optimizer.step()
 
-
-                train_correct += accuracy_calc(outputs,labels)
+                train_correct += accuracy_calc(outputs, labels)
                 train_samples += labels.size(0)
 
-                #append to lists
                 batch_loss_list.append(loss.item())
                 batch_percent_list.append(train_correct/train_samples)
 
-                #write to tensorboard
-                writer.add_scalar("training loss",loss.item(),(iter+1)*batch_idx)
-                writer.add_scalar("training accuracy",train_correct/train_samples,(iter+1)*batch_idx)
+                if (batch_idx+1) % grad_accum_steps == 0:
+                    if config['use_autocast']:
+                        scaler.step(optimizer)
+                        scaler.update()
+                    else:
+                        optimizer.step()
+                    optimizer.zero_grad(set_to_none=True)
+
+                if is_main_process:
+                    writer.add_scalar("training loss", loss.item(), (iter+1)*batch_idx)
+                    writer.add_scalar("training accuracy", train_correct/train_samples, (iter+1)*batch_idx)
         
-            scheduler.step() #update learning rate
-            train_losses = torch.cat((train_losses,average_for_plotting(batch_loss_list).unsqueeze(1)))
-            train_percent = torch.cat((train_percent,average_for_plotting(batch_percent_list).unsqueeze(1)))
+            scheduler.step()
+            if is_main_process:
+                train_losses = torch.cat((train_losses, get_average(batch_loss_list).unsqueeze(1)))
+                train_percent = torch.cat((train_percent, get_average(batch_percent_list).unsqueeze(1)))
+            
             elapsed_time = time.time() - start_time
-            remaining_iters = max_iters - iter
+            remaining_iters = config['max_iters'] - iter
             avg_time_per_iter = elapsed_time / (iter + 1)
             estimated_remaining_time = remaining_iters * avg_time_per_iter
 
-            if iter % eval_interval == 0 or iter == max_iters - 1:
-                val_loss, val_accuracy = estimate_loss(model,val_loader,criterion,use_autocast=use_autocast,dataloader=dataloader)
-                val_losses.append(val_loss)
-                val_percent.append(val_accuracy)
+            if iter % config['eval_interval'] == 0 or iter == config['max_iters'] - 1:
+                val_loss, val_accuracy = estimate_loss(model, val_loader, criterion, device, config['use_autocast'], dtype)
+                if is_main_process:
+                    val_losses.append(val_loss)
+                    val_percent.append(val_accuracy)
+                    print(f"Step {iter}: Train Loss: {train_losses[-1].mean().item():.4f}, Val Loss: {val_losses[-1]:.4f}")
+                    print(f"Step {iter}: Train Accuracy: {(train_percent[-1].mean().item())*100:.2f}%, Val Accuracy: {val_percent[-1]*100:.2f}%")
+                    writer.add_scalar('val loss', val_losses[-1], iter)
+                    writer.add_scalar('val accuracy', val_percent[-1], iter)
+                    
+                    # Save model on main process only
+                    save_path = f"checkpoints/{config['model_name']}_{iter}.pth"
+                    state_dict = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
+                    torch.save(state_dict, save_path)
 
-                print(f"Step {iter}: Train Loss: {train_losses[-1].mean().item():.4f}, Val Loss: {val_losses[-1]:.4f}")
-                print(f"Step {iter}: Train Accuracy: {(train_percent[-1].mean().item())*100:.2f}%, Val Accuracy: {val_percent[-1]*100:.2f}%")
-                writer.add_scalar('val loss', val_losses[-1], iter)
-                writer.add_scalar('val accuracy', val_percent[-1], iter)
-                torch.save(model.state_dict(), f'checkpoints/{model_name}{iter}.pth')
+            if is_main_process:
+                tqdm.write(f"Iter [{iter+1}/{config['max_iters']}] - Elapsed Time: {elapsed_time:.2f}s - Remaining Time: [{estimated_remaining_time:.2f}]")
 
-            tqdm.write(f"Iter [{iter+1}/{max_iters}] - Elapsed Time: {elapsed_time:.2f}s - Remaining Time: [{estimated_remaining_time:.2f}]")
-
-            if iter == max_iters - 1:
+            if iter == config['max_iters'] - 1 and is_main_process:
                 print("Training completed:")
                 print(f"Final Train Loss: {train_losses[-1].mean().item():.4f}")
                 print(f"Final Val Loss: {val_losses[-1]:.4f}")
                 print(f"Final Train Accuracy: {(train_percent[-1].mean().item())*100:.2f}%")
                 print(f"Final Val Accuracy: {val_percent[-1]*100:.2f}%")
 
-
     except KeyboardInterrupt:
-        print(f"Keyboard interrupt,\nFinal Train Loss: {train_losses[-1].mean().item():.4f}")
-        print(f"Final Val Loss: {val_losses[-1]:.4f}")
-        print(f"Final Train Accuracy: {(train_percent[-1].mean().item())*100:.2f}%")
-        print(f"Final Val Accuracy: {val_percent[-1]*100:.2f}%")
+        if is_main_process:
+            print(f"Keyboard interrupt,\nFinal Train Loss: {train_losses[-1].mean().item():.4f}")
+            print(f"Final Val Loss: {val_losses[-1]:.4f}")
+            print(f"Final Train Accuracy: {(train_percent[-1].mean().item())*100:.2f}%")
+            print(f"Final Val Accuracy: {val_percent[-1]*100:.2f}%")
     finally:
-        torch.save(model.state_dict(), f'checkpoints/{run_name}_finished.pth')
-        with open(f'statistics/{run_name}_finished_train_losses.npy', 'wb') as f:
-            np.save(f, train_losses.cpu().numpy())
-        with open(f'statistics/{run_name}_finished_val_losses.npy', 'wb') as f:
-            np.save(f, np.array(val_losses))
-        with open(f'statistics/{run_name}_finished_train_percent.npy', 'wb') as f:
-            np.save(f, train_percent.cpu().numpy())
-        with open(f'statistics/{run_name}_finished_val_percent.npy', 'wb') as f:
-            np.save(f, (val_percent[-1].cpu().numpy()))
-        print(f"Model and statistics saved!")
+        if is_main_process:
+            torch.save(model.state_dict(), f'checkpoints/{run_name}_finished.pth')
+            print(f"Model and statistics saved!")
+        
+        # Clean up distributed training
+        if dist.is_initialized():
+            dist.destroy_process_group()
 
 
 if __name__ == "__main__":
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    dtype = torch.bfloat16 if device == 'cuda' else torch.float32
+    print(f"Using {dtype} on {device}")
+    torch.set_float32_matmul_precision('high') if device == 'cuda' else torch.set_float32_matmul_precision('highest')
+    print(f"using {torch.get_float32_matmul_precision()} precision")
 
     parser = argparse.ArgumentParser(description="Train a model with the specified config")
-    parser.add_argument("--config","-C", type=str, required=True, help="Path to config file")
-    parser.add_argument("--dataloader", "-D", type=str, required=False, help="Choose a dataloader from torchvision, dali, or rocal")
+    parser.add_argument("config", type=str, help="Path to config file")
     args = parser.parse_args()
     config = load_config(args.config)
-    if args.dataloader is not None:
-        dataloader = args.dataloader
-    else:
-        dataloader = "torchvision"
     
     def profile():
-        train(config,dataloader)
-
-    import cProfile
+        train(config)
+    
     profiler = cProfile.Profile()
     profiler.runcall(profile)
-
-    import pstats
-    from pstats import SortKey
-
     stats = pstats.Stats(profiler)
     stats.sort_stats(SortKey.TIME)  # Sort by time
     stats.dump_stats('train_stats.prof')
