@@ -100,7 +100,10 @@ def load_config(config_path):
     return config
 
 def extract_features_labels(output, device):
-    features = output[0].to(device, non_blocking=True).permute(0,-1,1,2,3).to(torch.bfloat16)/255
+    # Move to device first
+    features = output[0].to(device, non_blocking=True)
+    # Then do operations on GPU
+    features = (features.permute(0, -1, 1, 2, 3).to(torch.bfloat16) / 255)
     labels = output[1].unsqueeze(1).to(device, non_blocking=True)
     return features, labels
 
@@ -175,7 +178,7 @@ def initialize_model(config: dict, device) -> nn.Module:
 
     if config['compile']:
         print("Compiling the model... (takes a ~minute)")
-        model = torch.compile(model)
+        model = torch.compile(model,mode='max-autotune-no-cudagraphs')
         print("Compilation complete!")
 
     return model
@@ -254,7 +257,7 @@ def train(config):
             batch_loss_list = []
             batch_percent_list = []
             
-            for batch_idx, output in enumerate(train_loader):
+            for batch_idx, output in tqdm(enumerate(train_loader)):
                 features, labels = extract_features_labels(output, device)
 
                 if config['use_autocast']:
