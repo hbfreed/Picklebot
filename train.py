@@ -1,3 +1,4 @@
+#Run with torchrun --standalone --nproc_per_node=3 train.py config/config_choice.json
 import time
 import json
 import argparse
@@ -128,9 +129,12 @@ def estimate_loss(model, val_loader, criterion, device, use_autocast, dtype):
         accuracy_calc = calculate_accuracy
     elif str(criterion) == "BCEWithLogitsLoss()":
         accuracy_calc = calculate_accuracy_bce
-    val_correct = 0
-    val_samples = 0
-    val_loss = 0
+
+    # Initialize tensors on the correct device
+    val_correct = torch.zeros(1).to(device)
+    val_samples = torch.zeros(1).to(device)
+    val_loss = torch.zeros(1).to(device)
+
     for output in tqdm(val_loader):
         features, labels = extract_features_labels(output, device)
         if use_autocast:
@@ -138,18 +142,25 @@ def estimate_loss(model, val_loader, criterion, device, use_autocast, dtype):
                 outputs = model(features)
                 if str(criterion) == "CrossEntropyLoss()":
                     labels = labels.to(torch.long).squeeze(1)
-                val_correct += accuracy_calc(outputs, labels)
+                val_correct += accuracy_calc(outputs, labels)  # Still using your accuracy function
                 val_samples += labels.size(0)
-                val_loss += criterion(outputs, labels).item()
+                val_loss += criterion(outputs, labels)
         else:
             outputs = model(features)
             if str(criterion) == "CrossEntropyLoss()":
                 labels = labels.to(torch.long).squeeze(1)
-            val_correct += accuracy_calc(outputs, labels)
+            val_correct += accuracy_calc(outputs, labels)  # Still using your accuracy function
             val_samples += labels.size(0)
-            val_loss += criterion(outputs, labels).item()
-    val_loss /= len(val_loader)
-    val_accuracy = val_correct/val_samples
+            val_loss += criterion(outputs, labels)
+
+    # Synchronize across GPUs
+    if dist.is_initialized():
+        dist.all_reduce(val_correct)
+        dist.all_reduce(val_samples)
+        dist.all_reduce(val_loss)
+    
+    val_loss = (val_loss / len(val_loader)).item()
+    val_accuracy = (val_correct/val_samples).item()
     return val_loss, val_accuracy
 
 def initialize_model(config: dict, device) -> nn.Module:
